@@ -1,0 +1,12 @@
+
+# Local secrets; only the placeholder template may be committed.
+.env
+.env.*
+!.env.example
+
+# Local usage counters (no conversation data)
+.runtime/
+
+# Generated build and local Vercel metadata
+dist/
+.vercel/
