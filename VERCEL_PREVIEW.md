@@ -14,7 +14,7 @@
 
 `vercel.json` rewrites `/api/:path*` to the Function adapter, which calls the same shared handler as the local Node server. It does not call `listen()`. The frontend keeps the existing hash routes and design. `dist` contains only index.html, app.js, account.js and styles.css. Local development still uses `npm start`.
 
-No deployment was created, and no production configuration was applied. On Vercel, the API deliberately refuses `VERCEL_ENV` values other than `preview`. Use a Preview branch/environment, not a production deployment. Static assets can still be published by Vercel, so do not interpret this API check as preventing a production deployment command.
+No deployment was created, and no production configuration was applied. The owner has now authorized Production. Both Preview and Production are accepted with exact HTTPS origin checks and shared limits. Production additionally accepts VERCEL_PROJECT_PRODUCTION_URL. See PRODUCTION.md for public deployment settings.
 
 ## Environment variables
 

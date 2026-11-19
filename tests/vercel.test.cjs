@@ -14,10 +14,10 @@ test('preview handler accepts parsed Vercel bodies, awaits shared auth limit and
   const handle=createHandler({...preview,storage,limiter:{auth:async ip=>{assert.equal(ip,'203.0.113.10');calls.push('limit');}}});
   const res=response();await handle(request(),res);assert.equal(res.status,200);assert.deepEqual(calls,['limit','handle']);
 });
-test('preview rejects unapproved hosts, cross-origin requests, production and missing IP',async()=>{
+test('preview rejects unapproved hosts, cross-origin requests, unsupported environments and missing IP',async()=>{
   const handle=createHandler({...preview,limiter:{auth:async()=>{}},storage:{handle:async()=>false}});
   for(const [req,status] of [[request({headers:{host:'attacker.example'}}),403],[request({headers:{...request().headers,origin:'https://attacker.example'}}),403],[request({headers:{...request().headers,'x-vercel-forwarded-for':''}}),503]]){const res=response();await handle(req,res);assert.equal(res.status,status);}
-  const res=response();await createHandler({...preview,deploymentEnv:'production'})(request(),res);assert.equal(res.status,503);
+  const res=response();await createHandler({...preview,deploymentEnv:'development'})(request(),res);assert.equal(res.status,503);
 });
 test('preview API fails closed if shared limiter is unavailable, not file-backed fallback',async()=>{
   let handled=false;const res=response();
@@ -70,4 +70,14 @@ test('email callback tokens are removed from URL without importing them into bro
     let replaced;const ctx=vm.createContext({location:{hash:fragment,pathname:'/',search:''},history:{replaceState(_,__,url){replaced=url;}},accountError:''});
     vm.runInContext(prelude,ctx);assert.equal(replaced,'/#/login');assert.ok(ctx.accountError);assert.ok(!ctx.accountError.includes('test-only'));
   }
+});
+
+ test('production accepts only exact deployment and production origins with shared limits',async()=>{
+  let calls=0;const handle=createHandler({...preview,deploymentEnv:'production',productionHost:'spu-ai-championship.vercel.app',limiter:{auth:async()=>{calls++;}},storage:{handle:async(_,__,___,send)=>{send(200,{ok:true});return true;}}});
+  for(const host of ['spu-ai-championship.vercel.app','bizplan-test.vercel.app']){const res=response();await handle(request({headers:{...request().headers,host,origin:'https://'+host}}),res);assert.equal(res.status,200);}
+  for(const [host,origin] of [['attacker.vercel.app','https://attacker.vercel.app'],['spu-ai-championship.vercel.app','https://attacker.example'],['spu-ai-championship.vercel.app','http://spu-ai-championship.vercel.app']]){const res=response();await handle(request({headers:{...request().headers,host,origin}}),res);assert.equal(res.status,403);}
+  assert.equal(calls,2);
+});
+test('production fails closed without distributed limits configuration',async()=>{
+  const res=response();await createHandler({...preview,deploymentEnv:'production',limiter:sharedLimits({url:'',secret:''}),storage:{handle:async()=>{throw new Error('must not run');}}})(request(),res);assert.equal(res.status,503);
 });

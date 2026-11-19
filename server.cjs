@@ -39,7 +39,7 @@ async function generateReply(contents, { key, fetchImpl = fetch, timeout = 20000
     throw new HttpError(502, 'เชื่อมต่อบริการ AI ไม่สำเร็จ กรุณาลองภายหลัง');
   }
 }
-function createHandler({ root = __dirname, key = process.env.GEMINI_API_KEY, fetchImpl = fetch, usageFile = path.join(root, '.runtime', 'usage.json'), timeout = 20000, storage = createSupabase(), vercel = process.env.VERCEL === '1', deploymentEnv = process.env.VERCEL_ENV, previewHost = process.env.VERCEL_URL, appOrigin = process.env.APP_ORIGIN, limiter } = {}) {
+function createHandler({ root = __dirname, key = process.env.GEMINI_API_KEY, fetchImpl = fetch, usageFile = path.join(root, '.runtime', 'usage.json'), timeout = 20000, storage = createSupabase(), vercel = process.env.VERCEL === '1', deploymentEnv = process.env.VERCEL_ENV, previewHost = process.env.VERCEL_URL, productionHost = process.env.VERCEL_PROJECT_PRODUCTION_URL, appOrigin = process.env.APP_ORIGIN, limiter } = {}) {
   const distributed = vercel ? (limiter || sharedLimits()) : null;
   const sessionLocks = new Set();
   const authAttempts = new Map();
@@ -79,8 +79,8 @@ function createHandler({ root = __dirname, key = process.env.GEMINI_API_KEY, fet
     const reply = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(data)); };
     try {
       const port = res.socket?.localPort;
-      const allowed = vercel ? [previewHost ? 'https://' + previewHost : '', appOrigin || ''].filter(Boolean) : ['http://localhost:' + port, 'http://127.0.0.1:' + port];
-      if (vercel && deploymentEnv !== 'preview') throw new HttpError(503, 'การตั้งค่านี้เปิดใช้เฉพาะ Preview');
+      const allowed = vercel ? [previewHost ? 'https://' + previewHost : '', deploymentEnv === 'production' && productionHost ? 'https://' + productionHost : '', appOrigin || ''].filter(Boolean) : ['http://localhost:' + port, 'http://127.0.0.1:' + port];
+      if (vercel && !['preview', 'production'].includes(deploymentEnv)) throw new HttpError(503, 'สภาพแวดล้อม deployment ไม่ถูกต้อง');
       if (vercel && allowed.some(o => !/^https:\/\/[a-z0-9.-]+$/i.test(o))) throw new HttpError(503, 'การตั้งค่า origin ไม่ถูกต้อง');
       const requestOrigin = allowed.find(o => new URL(o).host === req.headers.host);
       if (!requestOrigin) throw new HttpError(403, 'ไม่อนุญาตให้เข้าถึงบริการ');
