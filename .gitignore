@@ -9,6 +9,8 @@ out/
 dist/
 build/
 .vercel/
+next-env.d.ts
+*.tsbuildinfo
 
 # Dependencies
 node_modules/
