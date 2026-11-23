@@ -19,7 +19,8 @@ function readClean(value: string | undefined): string | null {
   if (
     !trimmed ||
     trimmed.startsWith("your_") ||
-    trimmed.startsWith("replace_with_")
+    trimmed.startsWith("replace_with_") ||
+    trimmed.startsWith("ใส่_")
   ) {
     return null;
   }
