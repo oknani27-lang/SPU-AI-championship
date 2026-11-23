@@ -267,9 +267,9 @@ export function TextToTaskComposer({
               </p>
             </div>
             {providerInfo && (
-              <Badge variant={providerInfo.usedFallback ? "neutral" : "sage"}>
+              <Badge variant={providerInfo.usedFallback ? "warning" : "sage"}>
                 {providerInfo.usedFallback
-                  ? "ตัวช่วยแยกข้อความอัตโนมัติ (Fallback)"
+                  ? "โหมดสาธิต (Demo Mode — ไม่ได้เรียก Gemini API)"
                   : `แยกข้อความโดย ${providerInfo.provider}`}
               </Badge>
             )}

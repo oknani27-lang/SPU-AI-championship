@@ -215,7 +215,7 @@ export default function RegisterPage() {
           className="w-full"
         >
           <Play className="h-4 w-4" />
-          ทดลองใช้งานโหมดสาธิตทันที (Hackathon Demo Mode)
+          ทดลองใช้งาน CarePlan
         </Button>
 
         <p className="text-center text-sm text-[#66736B]">

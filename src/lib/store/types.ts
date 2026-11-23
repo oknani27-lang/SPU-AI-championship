@@ -1,7 +1,10 @@
 import type {
   AiOperationLog,
+  CalendarEventOccurrence,
+  CalendarEventRecord,
   CareRecipientProfile,
   CompletionEvidence,
+  CreateCalendarEventInput,
   DailySummaryMetrics,
   DailySummaryRecord,
   DailyTaskOccurrence,
@@ -17,6 +20,7 @@ import type {
   TaskDependency,
   TaskHistoryEntry,
   TaskPriority,
+  UpdateCalendarEventInput,
   UserProfile,
   WeeklyScheduleTemplate,
 } from "@/types/careplan";
@@ -280,6 +284,36 @@ export interface CarePlanStore {
     userId: string,
     notificationId: string
   ): Promise<NotificationDeliveryLog>;
+
+  // Calendar Events (Apple Calendar-style)
+  listCalendarEvents(
+    userId: string,
+    rangeStart?: string,
+    rangeEnd?: string
+  ): Promise<{
+    events: CalendarEventRecord[];
+    occurrences: CalendarEventOccurrence[];
+  }>;
+  createCalendarEvent(
+    userId: string,
+    input: CreateCalendarEventInput
+  ): Promise<CalendarEventRecord>;
+  updateCalendarEvent(
+    userId: string,
+    eventId: string,
+    input: UpdateCalendarEventInput
+  ): Promise<{
+    event: CalendarEventRecord;
+    split_event?: CalendarEventRecord;
+  }>;
+  deleteCalendarEvent(
+    userId: string,
+    eventId: string,
+    options?: {
+      delete_scope?: "all" | "single";
+      occurrence_date?: string;
+    }
+  ): Promise<{ deleted: true }>;
 
   // Share Links
   listShareLinks(userId: string): Promise<ShareLinkRecord[]>;

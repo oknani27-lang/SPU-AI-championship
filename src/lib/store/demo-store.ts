@@ -3,8 +3,11 @@ import fs from "fs";
 import path from "path";
 import type {
   AiOperationLog,
+  CalendarEventOccurrence,
+  CalendarEventRecord,
   CareRecipientProfile,
   CompletionEvidence,
+  CreateCalendarEventInput,
   DailySummaryMetrics,
   DailySummaryRecord,
   DailyTaskOccurrence,
@@ -17,9 +20,15 @@ import type {
   SharedSchedulePayload,
   TaskDependency,
   TaskHistoryEntry,
+  UpdateCalendarEventInput,
   UserProfile,
   WeeklyScheduleTemplate,
 } from "@/types/careplan";
+import {
+  diffCalendarDays,
+  expandCalendarEventsForRange,
+  normalizeCalendarEventInput,
+} from "@/lib/calendar-events";
 import { getServerEnv } from "@/lib/env";
 import {
   ForbiddenError,
@@ -116,6 +125,7 @@ interface DemoDbSchema {
   daily_summaries: DailySummaryRecord[];
   rest_suggestions: RestSuggestionRecord[];
   share_links: ShareLinkRecord[];
+  calendar_events: CalendarEventRecord[];
   ai_logs: AiOperationLog[];
   privacy_deletion_requests: StoredPrivacyDeletionRequest[];
 }
@@ -137,6 +147,7 @@ function emptyDb(): DemoDbSchema {
     daily_summaries: [],
     rest_suggestions: [],
     share_links: [],
+    calendar_events: [],
     ai_logs: [],
     privacy_deletion_requests: [],
   };
@@ -175,8 +186,8 @@ function extensionFromMime(mimeType: string): string {
   }
 }
 
-export const DEMO_DEFAULT_EMAIL = "napa.demo@careplan.th";
-export const DEMO_DEFAULT_NAME = "คุณนภา (ผู้ดูแล)";
+export const DEMO_DEFAULT_EMAIL = "may.demo@careplan.th";
+export const DEMO_DEFAULT_NAME = "คุณเมย์";
 
 export class DemoFileStore implements CarePlanStore {
   public readonly mode = "demo" as const;
@@ -584,6 +595,7 @@ export class DemoFileStore implements CarePlanStore {
       db.daily_summaries = db.daily_summaries.filter((s) => s.user_id !== userId);
       db.rest_suggestions = db.rest_suggestions.filter((r) => r.user_id !== userId);
       db.share_links = db.share_links.filter((l) => l.user_id !== userId);
+      db.calendar_events = db.calendar_events.filter((e) => e.user_id !== userId);
       db.ai_logs = db.ai_logs.filter((l) => l.user_id !== userId);
       db.privacy_deletion_requests = db.privacy_deletion_requests.filter(
         (p) => p.user_id !== userId
@@ -617,11 +629,11 @@ export class DemoFileStore implements CarePlanStore {
     const bootstrap = this.createBootstrapEntities(
       db,
       user,
-      "คุณแม่สมใจ",
-      74
+      "คุณสมใจ",
+      72
     );
     bootstrap.care_recipient.care_notes =
-      "อายุ 74 ปี ความดันโลหิตสูง ต้องรับประทานยาหลังอาหารเช้าและวัดความดันสม่ำเสมอ ไม่ควรปล่อยให้อยู่ลำพัง";
+      "อายุ 72 ปี พักอาศัยที่บ้าน ต้องการผู้ดูแลช่วยจัดเตรียมกิจวัตรประจำวันและดูแลอย่างใกล้ชิด (ข้อมูลสาธิต — ไม่ใช่คำสั่งแพทย์)";
 
     if (seedSampleTasks) {
       const todayDate = getThaiTodayDate();
@@ -629,129 +641,243 @@ export class DemoFileStore implements CarePlanStore {
       const mondayDate = weekDates[0].date;
       const tuesdayDate = weekDates[1].date;
       const wednesdayDate = weekDates[2].date;
+      const thursdayDate = weekDates[3].date;
+      const fridayDate = weekDates[4].date;
+      const saturdayDate = weekDates[5].date;
+
+      const makeSeedTpl = (
+        id: string,
+        day_of_week: DayOfWeek,
+        effective_from_date: string,
+        title: string,
+        description: string,
+        scheduled_time: string,
+        duration_minutes: number,
+        priority: RecurringTaskTemplate["priority"],
+        is_fixed_time: boolean,
+        is_medically_prescribed: boolean
+      ): RecurringTaskTemplate => ({
+        id,
+        user_id: userId,
+        weekly_schedule_id: bootstrap.weekly_schedule.id,
+        day_of_week,
+        title,
+        description,
+        scheduled_time,
+        duration_minutes,
+        priority,
+        is_fixed_time,
+        is_medically_prescribed,
+        effective_from_date,
+        effective_until_date: null,
+        version: 1,
+        is_active: true,
+        created_at: nowIso,
+        updated_at: nowIso,
+      });
 
       const tplMonMealId = crypto.randomUUID();
       const tplMonMedId = crypto.randomUUID();
-      const tplMonWalkId = crypto.randomUUID();
-      const tplTueBpId = crypto.randomUUID();
-      const tplTueStretchId = crypto.randomUUID();
-      const tplWedMedId = crypto.randomUUID();
 
       const seededTemplates: RecurringTaskTemplate[] = [
-        {
-          id: tplMonMealId,
-          user_id: userId,
-          weekly_schedule_id: bootstrap.weekly_schedule.id,
-          day_of_week: 1,
-          title: "เตรียมอาหารเช้าอ่อนๆ ให้คุณแม่",
-          description: "ข้าวต้มปลาและน้ำอุ่น ลดเค็มตามคำแนะนำแพทย์",
-          scheduled_time: "08:00",
-          duration_minutes: 40,
-          priority: "high",
-          is_fixed_time: true,
-          is_medically_prescribed: false,
-          effective_from_date: mondayDate,
-          effective_until_date: null,
-          version: 1,
-          is_active: true,
-          created_at: nowIso,
-          updated_at: nowIso,
-        },
-        {
-          id: tplMonMedId,
-          user_id: userId,
-          weekly_schedule_id: bootstrap.weekly_schedule.id,
-          day_of_week: 1,
-          title: "จัดยาความดันหลังอาหารเช้า",
-          description: "ยาความดันตามใบสั่งแพทย์ 1 เม็ด พร้อมน้ำดื่มสะอาด",
-          scheduled_time: "09:00",
-          duration_minutes: 15,
-          priority: "medical_critical",
-          is_fixed_time: true,
-          is_medically_prescribed: true,
-          effective_from_date: mondayDate,
-          effective_until_date: null,
-          version: 1,
-          is_active: true,
-          created_at: nowIso,
-          updated_at: nowIso,
-        },
-        {
-          id: tplMonWalkId,
-          user_id: userId,
-          weekly_schedule_id: bootstrap.weekly_schedule.id,
-          day_of_week: 1,
-          title: "พาคุณแม่ยืดเหยียดและเดินเบาๆ ในบ้าน",
-          description: "ประคองเดินในห้องโถง 15-20 นาที ป้องกันข้อติด",
-          scheduled_time: "14:00",
-          duration_minutes: 30,
-          priority: "medium",
-          is_fixed_time: false,
-          is_medically_prescribed: false,
-          effective_from_date: mondayDate,
-          effective_until_date: null,
-          version: 1,
-          is_active: true,
-          created_at: nowIso,
-          updated_at: nowIso,
-        },
-        {
-          id: tplTueBpId,
-          user_id: userId,
-          weekly_schedule_id: bootstrap.weekly_schedule.id,
-          day_of_week: 2,
-          title: "วัดความดันโลหิตและจดบันทึก",
-          description: "วัดหลังพักนั่ง 5 นาที และบันทึกค่าลงสมุดประจำตัว",
-          scheduled_time: "08:30",
-          duration_minutes: 20,
-          priority: "medical_critical",
-          is_fixed_time: true,
-          is_medically_prescribed: true,
-          effective_from_date: tuesdayDate,
-          effective_until_date: null,
-          version: 1,
-          is_active: true,
-          created_at: nowIso,
-          updated_at: nowIso,
-        },
-        {
-          id: tplTueStretchId,
-          user_id: userId,
-          weekly_schedule_id: bootstrap.weekly_schedule.id,
-          day_of_week: 2,
-          title: "นวดผ่อนคลายไหล่และแขนขา",
-          description: "นวดเบาๆ ช่วยระบบไหลเวียนโลหิต",
-          scheduled_time: "11:00",
-          duration_minutes: 30,
-          priority: "low",
-          is_fixed_time: false,
-          is_medically_prescribed: false,
-          effective_from_date: tuesdayDate,
-          effective_until_date: null,
-          version: 1,
-          is_active: true,
-          created_at: nowIso,
-          updated_at: nowIso,
-        },
-        {
-          id: tplWedMedId,
-          user_id: userId,
-          weekly_schedule_id: bootstrap.weekly_schedule.id,
-          day_of_week: 3,
-          title: "จัดยาและตรวจเช็กสต็อกยาประจำสัปดาห์",
-          description: "ตรวจสอบจำนวนยาในกล่องแยกมื้อให้ครบถ้วน",
-          scheduled_time: "09:00",
-          duration_minutes: 25,
-          priority: "medical_critical",
-          is_fixed_time: true,
-          is_medically_prescribed: true,
-          effective_from_date: wednesdayDate,
-          effective_until_date: null,
-          version: 1,
-          is_active: true,
-          created_at: nowIso,
-          updated_at: nowIso,
-        },
+        // วันจันทร์ (5 กิจกรรม)
+        makeSeedTpl(
+          tplMonMealId,
+          1,
+          mondayDate,
+          "เตรียมอาหารเช้าอ่อนๆ ให้คุณสมใจ",
+          "เตรียมอาหารเช้าย่อยง่ายพร้อมน้ำอุ่น และดูแลการรับประทานอาหาร",
+          "08:00",
+          40,
+          "high",
+          true,
+          false
+        ),
+        makeSeedTpl(
+          tplMonMedId,
+          1,
+          mondayDate,
+          "ช่วยเตรียมยาตามรายการที่แพทย์กำหนด",
+          "ตรวจสอบความครบถ้วนตามรายการที่แพทย์กำหนดหลังอาหารเช้า (ข้อมูลสาธิต)",
+          "09:00",
+          15,
+          "medical_critical",
+          true,
+          true
+        ),
+        makeSeedTpl(
+          crypto.randomUUID(),
+          1,
+          mondayDate,
+          "พาเดินยืดเหยียดเบาๆ ในบ้าน",
+          "ประคองเดินในห้องโถง 15-20 นาที เพื่อช่วยการเคลื่อนไหว",
+          "11:00",
+          30,
+          "medium",
+          false,
+          false
+        ),
+        makeSeedTpl(
+          crypto.randomUUID(),
+          1,
+          mondayDate,
+          "เตรียมของว่างและน้ำดื่มช่วงบ่าย",
+          "จัดผลไม้เนื้อนิ่มหรือของว่างเบาๆ พร้อมน้ำดื่มสะอาด",
+          "14:00",
+          20,
+          "low",
+          false,
+          false
+        ),
+        makeSeedTpl(
+          crypto.randomUUID(),
+          1,
+          mondayDate,
+          "เตรียมอาหารเย็นและจัดที่พักผ่อน",
+          "เตรียมมื้อเย็นและตรวจสอบความเรียบร้อยก่อนเข้านอน",
+          "18:00",
+          45,
+          "high",
+          true,
+          false
+        ),
+        // วันอังคาร (3 กิจกรรม)
+        makeSeedTpl(
+          crypto.randomUUID(),
+          2,
+          tuesdayDate,
+          "เตรียมอาหารเช้าและจดบันทึกกิจวัตร",
+          "ดูแลมื้อเช้าและจดบันทึกความเรียบร้อยประจำวันลงสมุด",
+          "08:30",
+          30,
+          "high",
+          true,
+          false
+        ),
+        makeSeedTpl(
+          crypto.randomUUID(),
+          2,
+          tuesdayDate,
+          "นวดผ่อนคลายไหล่และแขนขาเบาๆ",
+          "ช่วยนวดผ่อนคลายเบาๆ ลดอาการเมื่อยล้า",
+          "11:00",
+          30,
+          "medium",
+          false,
+          false
+        ),
+        makeSeedTpl(
+          crypto.randomUUID(),
+          2,
+          tuesdayDate,
+          "ชวนพูดคุยและฟังเพลงผ่อนคลาย",
+          "เปิดเพลงที่ชอบและใช้เวลาพูดคุยร่วมกันช่วงบ่าย",
+          "16:00",
+          30,
+          "low",
+          false,
+          false
+        ),
+        // วันพุธ (2 กิจกรรม)
+        makeSeedTpl(
+          crypto.randomUUID(),
+          3,
+          wednesdayDate,
+          "ช่วยเตรียมยาตามรายการที่แพทย์กำหนด",
+          "ตรวจสอบกล่องจัดยาประจำสัปดาห์ตามรายการที่แพทย์กำหนด (ข้อมูลสาธิต)",
+          "09:00",
+          20,
+          "medical_critical",
+          true,
+          true
+        ),
+        makeSeedTpl(
+          crypto.randomUUID(),
+          3,
+          wednesdayDate,
+          "ตรวจเช็กความเรียบร้อยพื้นที่เดินในบ้าน",
+          "ตรวจสอบแสงสว่างและทางเดินให้ปลอดภัย ไม่มีสิ่งกีดขวาง",
+          "15:00",
+          25,
+          "medium",
+          false,
+          false
+        ),
+        // วันพฤหัสบดี (2 กิจกรรม)
+        makeSeedTpl(
+          crypto.randomUUID(),
+          4,
+          thursdayDate,
+          "เตรียมอาหารเช้าและดูแลการดื่มน้ำ",
+          "เตรียมอาหารเช้าและจัดน้ำดื่มไว้ใกล้มือให้เพียงพอ",
+          "08:30",
+          35,
+          "high",
+          true,
+          false
+        ),
+        makeSeedTpl(
+          crypto.randomUUID(),
+          4,
+          thursdayDate,
+          "พายืดเหยียดร่างกายเบาๆ ในบ้าน",
+          "ฝึกขยับแขนขาและยืดเหยียดเบาๆ บนเก้าอี้ที่มีพนักพิง",
+          "14:30",
+          30,
+          "medium",
+          false,
+          false
+        ),
+        // วันศุกร์ (2 กิจกรรม)
+        makeSeedTpl(
+          crypto.randomUUID(),
+          5,
+          fridayDate,
+          "ช่วยเตรียมยาตามรายการที่แพทย์กำหนด",
+          "จัดเตรียมและตรวจทานตามรายการที่แพทย์กำหนด (ข้อมูลสาธิต)",
+          "09:00",
+          20,
+          "medical_critical",
+          true,
+          true
+        ),
+        makeSeedTpl(
+          crypto.randomUUID(),
+          5,
+          fridayDate,
+          "โทรวิดีโอคอลพูดคุยกับสมาชิกในครอบครัว",
+          "เชื่อมต่อสายกับญาติพี่น้องเพื่ออัปเดตข่าวคราวประจำสัปดาห์",
+          "16:30",
+          30,
+          "low",
+          false,
+          false
+        ),
+        // วันเสาร์ (2 กิจกรรม)
+        makeSeedTpl(
+          crypto.randomUUID(),
+          6,
+          saturdayDate,
+          "เตรียมอาหารเช้าและจัดของใช้ประจำสัปดาห์",
+          "เติมของใช้จำเป็นและจัดระเบียบพื้นที่พักผ่อน",
+          "09:00",
+          40,
+          "medium",
+          true,
+          false
+        ),
+        makeSeedTpl(
+          crypto.randomUUID(),
+          6,
+          saturdayDate,
+          "พานั่งพักผ่อนรับลมบริเวณหน้าบ้าน",
+          "เปลี่ยนบรรยากาศช่วงบ่ายในพื้นที่ร่มรื่นพร้อมดูแลใกล้ชิด",
+          "15:00",
+          30,
+          "low",
+          false,
+          false
+        ),
       ];
 
       db.templates.push(...seededTemplates);
@@ -763,6 +889,44 @@ export class DemoFileStore implements CarePlanStore {
         successor_template_id: tplMonMedId,
         created_at: nowIso,
       });
+
+      // Seed 2 sample calendar events (Apple Calendar style)
+      db.calendar_events.push(
+        {
+          id: crypto.randomUUID(),
+          user_id: userId,
+          title: "นัดตรวจสุขภาพประจำเดือน (ข้อมูลสาธิต)",
+          description: "เตรียมสมุดบันทึกประจำตัวและรายการยาที่แพทย์กำหนดไปด้วย",
+          start_date: wednesdayDate,
+          end_date: wednesdayDate,
+          start_time: "10:00",
+          end_time: "11:30",
+          is_all_day: false,
+          recurrence: "never",
+          until_date: null,
+          excluded_dates: [],
+          reminder_minutes: 30,
+          created_at: nowIso,
+          updated_at: nowIso,
+        },
+        {
+          id: crypto.randomUUID(),
+          user_id: userId,
+          title: "วิดีโอคอลเยี่ยมครอบครัวประจำสัปดาห์ (ข้อมูลสาธิต)",
+          description: "นัดคุยพร้อมหน้าครอบครัวทุกเย็นวันเสาร์",
+          start_date: saturdayDate,
+          end_date: saturdayDate,
+          start_time: "19:00",
+          end_time: "19:45",
+          is_all_day: false,
+          recurrence: "weekly",
+          until_date: null,
+          excluded_dates: [],
+          reminder_minutes: 15,
+          created_at: nowIso,
+          updated_at: nowIso,
+        }
+      );
 
       // Materialize today if it is not a rest day
       this.materializeDateInMemory(db, userId, todayDate);
@@ -2146,5 +2310,233 @@ export class DemoFileStore implements CarePlanStore {
       message:
         "ระบบบันทึกคำขอลบข้อมูลส่วนบุคคลตามหลัก PDPA/GDPR เรียบร้อยแล้ว โดยไม่เป็นการแก้ไขประวัติหลักฐานการทำงานตามปกติ",
     };
+  }
+
+  // =========================================================================
+  // Calendar Events (Apple Calendar-style CRUD & Recurrence)
+  // =========================================================================
+
+  async listCalendarEvents(
+    userId: string,
+    rangeStart?: string,
+    rangeEnd?: string
+  ): Promise<{
+    events: CalendarEventRecord[];
+    occurrences: CalendarEventOccurrence[];
+  }> {
+    const db = this.readDb();
+    this.requireBootstrap(db, userId);
+
+    const events = db.calendar_events
+      .filter((e) => e.user_id === userId)
+      .sort((a, b) =>
+        `${a.start_date}T${a.start_time}`.localeCompare(`${b.start_date}T${b.start_time}`)
+      );
+
+    const today = getThaiTodayDate();
+    const start = rangeStart && isValidDateString(rangeStart) ? rangeStart : addDays(today, -31);
+    const end = rangeEnd && isValidDateString(rangeEnd) ? rangeEnd : addDays(today, 62);
+    const occurrences = expandCalendarEventsForRange(events, start, end);
+
+    return { events, occurrences };
+  }
+
+  async createCalendarEvent(
+    userId: string,
+    input: CreateCalendarEventInput
+  ): Promise<CalendarEventRecord> {
+    const db = this.readDb();
+    this.requireBootstrap(db, userId);
+
+    const normalized = normalizeCalendarEventInput(input);
+    const nowIso = new Date().toISOString();
+    const record: CalendarEventRecord = {
+      id: crypto.randomUUID(),
+      user_id: userId,
+      ...normalized,
+      excluded_dates: [],
+      created_at: nowIso,
+      updated_at: nowIso,
+    };
+
+    db.calendar_events.push(record);
+    this.writeDb(db);
+    return record;
+  }
+
+  async updateCalendarEvent(
+    userId: string,
+    eventId: string,
+    input: UpdateCalendarEventInput
+  ): Promise<{
+    event: CalendarEventRecord;
+    split_event?: CalendarEventRecord;
+  }> {
+    const db = this.readDb();
+    this.requireBootstrap(db, userId);
+
+    const existing = db.calendar_events.find((e) => e.id === eventId);
+    if (!existing) {
+      throw new NotFoundError("ไม่พบกิจกรรมในปฏิทินที่ต้องการแก้ไข");
+    }
+    if (existing.user_id !== userId) {
+      throw new ForbiddenError("คุณไม่มีสิทธิ์แก้ไขกิจกรรมของผู้อื่น");
+    }
+
+    const editScope = input.edit_scope ?? "all";
+    const nowIso = new Date().toISOString();
+    const spanDays = Math.max(0, diffCalendarDays(existing.start_date, existing.end_date));
+
+    if (
+      (editScope === "single" || editScope === "future") &&
+      existing.recurrence !== "never"
+    ) {
+      const occDate = input.occurrence_date;
+      if (!occDate || !isValidDateString(occDate)) {
+        throw new ValidationError("กรุณาระบุวันที่ของรอบกิจกรรมที่ต้องการแก้ไข (occurrence_date)");
+      }
+
+      if (editScope === "single") {
+        const nextStart = input.start_date ?? occDate;
+        const nextEnd =
+          input.end_date ?? (spanDays > 0 ? addDays(nextStart, spanDays) : nextStart);
+        const normalizedSingle = normalizeCalendarEventInput({
+          title: input.title ?? existing.title,
+          description: input.description ?? existing.description,
+          start_date: nextStart,
+          end_date: nextEnd,
+          start_time: input.start_time ?? existing.start_time,
+          end_time: input.end_time ?? existing.end_time,
+          is_all_day: input.is_all_day ?? existing.is_all_day,
+          recurrence: "never",
+          until_date: null,
+          reminder_minutes:
+            input.reminder_minutes !== undefined
+              ? input.reminder_minutes
+              : existing.reminder_minutes,
+        });
+
+        if (!existing.excluded_dates.includes(occDate)) {
+          existing.excluded_dates = [...existing.excluded_dates, occDate];
+          existing.updated_at = nowIso;
+        }
+
+        const singleEvent: CalendarEventRecord = {
+          id: crypto.randomUUID(),
+          user_id: userId,
+          ...normalizedSingle,
+          excluded_dates: [],
+          created_at: nowIso,
+          updated_at: nowIso,
+        };
+        db.calendar_events.push(singleEvent);
+        this.writeDb(db);
+        return { event: existing, split_event: singleEvent };
+      }
+
+      // editScope === "future"
+      if (occDate > existing.start_date) {
+        const nextStart = input.start_date ?? occDate;
+        const nextEnd =
+          input.end_date ?? (spanDays > 0 ? addDays(nextStart, spanDays) : nextStart);
+        const normalizedFuture = normalizeCalendarEventInput({
+          title: input.title ?? existing.title,
+          description: input.description ?? existing.description,
+          start_date: nextStart,
+          end_date: nextEnd,
+          start_time: input.start_time ?? existing.start_time,
+          end_time: input.end_time ?? existing.end_time,
+          is_all_day: input.is_all_day ?? existing.is_all_day,
+          recurrence: input.recurrence ?? existing.recurrence,
+          until_date:
+            input.until_date !== undefined ? input.until_date : existing.until_date,
+          reminder_minutes:
+            input.reminder_minutes !== undefined
+              ? input.reminder_minutes
+              : existing.reminder_minutes,
+        });
+
+        existing.until_date = addDays(occDate, -1);
+        existing.updated_at = nowIso;
+
+        const futureEvent: CalendarEventRecord = {
+          id: crypto.randomUUID(),
+          user_id: userId,
+          ...normalizedFuture,
+          excluded_dates: [],
+          created_at: nowIso,
+          updated_at: nowIso,
+        };
+        db.calendar_events.push(futureEvent);
+        this.writeDb(db);
+        return { event: existing, split_event: futureEvent };
+      }
+    }
+
+    // Default: edit entire event ("all" or non-recurring or future from start_date)
+    const nextStart = input.start_date ?? existing.start_date;
+    const nextEnd =
+      input.end_date ??
+      (input.start_date ? addDays(nextStart, spanDays) : existing.end_date);
+    const normalizedAll = normalizeCalendarEventInput({
+      title: input.title ?? existing.title,
+      description: input.description ?? existing.description,
+      start_date: nextStart,
+      end_date: nextEnd,
+      start_time: input.start_time ?? existing.start_time,
+      end_time: input.end_time ?? existing.end_time,
+      is_all_day: input.is_all_day ?? existing.is_all_day,
+      recurrence: input.recurrence ?? existing.recurrence,
+      until_date:
+        input.until_date !== undefined ? input.until_date : existing.until_date,
+      reminder_minutes:
+        input.reminder_minutes !== undefined
+          ? input.reminder_minutes
+          : existing.reminder_minutes,
+    });
+
+    Object.assign(existing, normalizedAll, { updated_at: nowIso });
+    this.writeDb(db);
+    return { event: existing };
+  }
+
+  async deleteCalendarEvent(
+    userId: string,
+    eventId: string,
+    options?: {
+      delete_scope?: "all" | "single";
+      occurrence_date?: string;
+    }
+  ): Promise<{ deleted: true }> {
+    const db = this.readDb();
+    this.requireBootstrap(db, userId);
+
+    const existing = db.calendar_events.find((e) => e.id === eventId);
+    if (!existing) {
+      throw new NotFoundError("ไม่พบกิจกรรมในปฏิทินที่ต้องการลบ");
+    }
+    if (existing.user_id !== userId) {
+      throw new ForbiddenError("คุณไม่มีสิทธิ์ลบกิจกรรมของผู้อื่น");
+    }
+
+    if (
+      options?.delete_scope === "single" &&
+      existing.recurrence !== "never" &&
+      options.occurrence_date
+    ) {
+      if (!isValidDateString(options.occurrence_date)) {
+        throw new ValidationError("รูปแบบวันที่ไม่ถูกต้อง (YYYY-MM-DD)");
+      }
+      if (!existing.excluded_dates.includes(options.occurrence_date)) {
+        existing.excluded_dates = [...existing.excluded_dates, options.occurrence_date];
+        existing.updated_at = new Date().toISOString();
+      }
+      this.writeDb(db);
+      return { deleted: true };
+    }
+
+    db.calendar_events = db.calendar_events.filter((e) => e.id !== eventId);
+    this.writeDb(db);
+    return { deleted: true };
   }
 }

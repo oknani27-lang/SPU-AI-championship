@@ -188,10 +188,10 @@ export function AiScheduleReviewModal({
                 {proposal.summary_note ||
                   "ตารางที่แนะนำเรียงตามลำดับเวลา (คุณสามารถปรับเวลาได้ก่อนกดอนุมัติ)"}
               </p>
-              <Badge variant={proposal.used_fallback ? "neutral" : "sage"}>
+              <Badge variant={proposal.used_fallback ? "warning" : "sage"}>
                 <Sparkles className="h-3 w-3" />
                 {proposal.used_fallback
-                  ? "จัดเรียงด้วยอัลกอริทึมสำรอง (Fallback)"
+                  ? "โหมดสาธิต (Demo Mode — ไม่ได้เรียก Gemini API)"
                   : `สร้างข้อเสนอโดย ${proposal.provider}`}
               </Badge>
             </div>

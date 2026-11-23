@@ -889,16 +889,16 @@ function buildDeterministicSummaryMessage(
 ): string {
   switch (tone) {
     case "rest_day":
-      return `วันนี้เป็นวันพักผ่อนของ${caregiverName} ขอให้ได้พักฟื้นทั้งกายและใจอย่างเต็มที่นะครับ การดูแลตัวเองให้แข็งแรงคือพลังสำคัญในการดูแลคนที่คุณรักในวันต่อไป (หมายเหตุ: ยาหรือการดูแลทางการแพทย์ที่จำเป็นยังคงต้องดูแลตามคำสั่งแพทย์)`;
+      return `วันนี้เป็นวันพักผ่อนของ${caregiverName} ขอให้ได้พักฟื้นทั้งกายและใจอย่างเต็มที่นะ การดูแลตัวเองให้แข็งแรงคือพลังสำคัญในการดูแลคนที่คุณรักในวันต่อไป (หมายเหตุ: ยาหรือการดูแลทางการแพทย์ที่จำเป็นยังคงต้องดูแลตามคำสั่งแพทย์)`;
     case "on_time_praise":
       if (metrics.total_tasks === 0) {
-        return `วันนี้ยังไม่มีรายการงานในตารางครับ ${caregiverName}สามารถใช้เวลาพักผ่อนหรือวางแผนดูแลเพิ่มเติมได้ตามความสะดวกเลยนะครับ`;
+        return `วันนี้ยังไม่มีรายการงานในตาราง ${caregiverName}สามารถใช้เวลาพักผ่อนหรือวางแผนดูแลเพิ่มเติมได้ตามความสะดวกเลยนะ`;
       }
-      return `ยอดเยี่ยมมากครับ${caregiverName}! วันนี้คุณดูแลครบทั้ง ${metrics.completed_tasks}/${metrics.total_tasks} รายการตรงเวลาทั้งหมด (${metrics.progress_percent}%) ความสม่ำเสมอและความใส่ใจของคุณมีความหมายกับคุณแม่มากจริงๆ ขอชื่นชมจากใจครับ`;
+      return `วันนี้คุณจัดการงานได้ดีมากเลยนะ เก่งมาก! ทำครบ ${metrics.completed_tasks}/${metrics.total_tasks} รายการตรงเวลา (${metrics.progress_percent}%) อย่าลืมพักผ่อนให้ตัวเองด้วย`;
     case "delayed_empathy":
-      return `ขอบคุณความทุ่มเทของ${caregiverName}ในวันนี้นะครับ คุณทำภารกิจสำเร็จไปแล้ว ${metrics.completed_tasks}/${metrics.total_tasks} รายการ (เสร็จช้ากว่าเวลา ${metrics.delayed_completions} รายการ) แม้บางช่วงจะขยับเวลาไปบ้างแต่ทุกอย่างที่คุณทำล้วนเกิดจากความตั้งใจ อย่ากดดันตัวเองเลยนะครับ พรุ่งนี้ค่อยเริ่มใหม่ไปด้วยกันอย่างสบายใจครับ`;
+      return `วันนี้อาจมีบางอย่างไม่เป็นไปตามแผน (เสร็จแล้ว ${metrics.completed_tasks}/${metrics.total_tasks} รายการ ล่าช้า ${metrics.delayed_completions} รายการ) แต่คุณก็พยายามอย่างเต็มที่แล้ว พักผ่อนให้เพียงพอนะ`;
     case "incomplete_support":
-      return `${caregiverName}เก่งมากแล้วครับที่พยายามดูแลอย่างเต็มที่ในวันนี้ (ทำเสร็จแล้ว ${metrics.completed_tasks}/${metrics.total_tasks} รายการ และยังเหลือ ${metrics.incomplete_tasks} รายการ) บางวันภาระการดูแลอาจหนักเกินกว่าคนเดียวจะรับไหว หากรู้สึกเหนื่อยล้า ลองชวนสมาชิกในครอบครัวหรือญาติมาช่วยแบ่งเบาบางช่วงเวลาดูนะครับ คุณไม่ได้อยู่คนเดียวครับ`;
+      return `วันนี้คงมีหลายอย่างให้จัดการ (เสร็จแล้ว ${metrics.completed_tasks}/${metrics.total_tasks} รายการ และยังเหลือ ${metrics.incomplete_tasks} รายการ) ไม่เป็นไรนะ ค่อย ๆ ทำทีละอย่าง และอย่าลืมขอความช่วยเหลือจากครอบครัวหากจำเป็น`;
   }
 }
 
@@ -1005,11 +1005,11 @@ export interface ScheduleGap {
 export function findScheduleGaps(occurrences: DailyTaskOccurrence[]): ScheduleGap[] {
   const DAY_START = 7 * 60; // 07:00
   const DAY_END = 21 * 60; // 21:00
-  const MIN_GAP = 20;
+  const MIN_GAP = 5;
 
   if (occurrences.length === 0) {
     return [
-      { gap_start: "10:00", gap_end: "11:00", duration_minutes: 60 },
+      { gap_start: "10:00", gap_end: "10:30", duration_minutes: 30 },
       { gap_start: "15:00", gap_end: "16:00", duration_minutes: 60 },
     ];
   }
@@ -1040,8 +1040,8 @@ export function findScheduleGaps(occurrences: DailyTaskOccurrence[]): ScheduleGa
     const clippedStart = Math.max(DAY_START, iv.start);
     if (clippedStart - cursor >= MIN_GAP) {
       const gapDuration = clippedStart - cursor;
-      // Only include pre-first-task gap if >= 30 min so it feels useful
-      if (cursor > DAY_START || gapDuration >= 30) {
+      // Between tasks: allow 5+ min micro-breaks; before first task: require >= 15 min
+      if (cursor > DAY_START || gapDuration >= 15) {
         gaps.push({
           gap_start: minutesToHhmm(cursor),
           gap_end: minutesToHhmm(clippedStart),
@@ -1052,11 +1052,11 @@ export function findScheduleGaps(occurrences: DailyTaskOccurrence[]): ScheduleGa
     cursor = Math.max(cursor, Math.min(DAY_END, iv.end));
   }
 
-  if (DAY_END - cursor >= 30) {
+  if (DAY_END - cursor >= 15) {
     gaps.push({
       gap_start: minutesToHhmm(cursor),
-      gap_end: minutesToHhmm(Math.min(DAY_END, cursor + 90)),
-      duration_minutes: Math.min(90, DAY_END - cursor),
+      gap_end: minutesToHhmm(Math.min(DAY_END, cursor + 60)),
+      duration_minutes: Math.min(60, DAY_END - cursor),
     });
   }
 
@@ -1072,42 +1072,49 @@ function buildDeterministicRestSuggestions(
 > {
   const safetyNote = requiresSupervision
     ? DEFAULT_SUPERVISION_SAFETY_NOTE
-    : "สามารถพักผ่อนตามอัธยาศัยในบริเวณที่ยังคงดูแลและได้ยินเสียงผู้สูงอายุได้สะดวกครับ";
+    : "สามารถพักผ่อนตามอัธยาศัยในบริเวณที่ยังคงดูแลและได้ยินเสียงผู้สูงอายุได้สะดวก";
 
-  const shortActivities = [
+  // 5–14 minutes: micro-break
+  const microActivities = [
     {
-      title: "พักสายตาและจิบชาอุ่นๆ ใกล้ห้องดูแล",
-      desc: "วางหน้าจอสักครู่ หายใจเข้าออกลึกๆ ช้าๆ พร้อมดื่มน้ำอุ่นหรือชาสมุนไพรเพื่อคลายความตึงเครียด",
+      title: "พักสายตา หายใจเข้าออกลึกๆ และดื่มน้ำ (5-10 นาที)",
+      desc: "วางโทรศัพท์สักครู่ ลุกขึ้นดื่มน้ำสะอาดและพักสายตาใกล้ห้องดูแลเพื่อคลายความล้าทันที",
     },
     {
-      title: "ยืดเหยียดคอ บ่า ไหล่ และหลังเบาๆ",
-      desc: "ยืดกล้ามเนื้อส่วนที่เมื่อยล้าจากการประคองและยกของ 10-15 นาที ช่วยลดอาการปวดเมื่อยสะสม",
+      title: "ฟังเพลงบรรเลงสั้นๆ เพื่อผ่อนคลาย (5-10 นาที)",
+      desc: "เปิดเพลงเบาๆ ด้วยลำโพง (ไม่ใส่หูฟังตัดเสียง) เพื่อพักสมองระหว่างช่วงงาน",
     },
   ];
 
+  // 15–29 minutes: medium break
   const mediumActivities = [
     {
-      title: "ฟังเพลงบรรเลงหรือพอดแคสต์ผ่อนคลาย",
-      desc: "เปิดเพลงเบาๆ ด้วยลำโพงระดับเสียงพอดี (ไม่ใส่หูฟังตัดเสียงรบกวน) เพื่อพักสมองและยังได้ยินเสียงผู้สูงอายุ",
+      title: "อ่านหนังสือหรือยืดเหยียดคอ บ่า ไหล่ (15-30 นาที)",
+      desc: "ยืดกล้ามเนื้อที่เมื่อยล้าจากการดูแล หรืออ่านหนังสือเล่มโปรดในบริเวณที่ดูแลได้สะดวก",
     },
     {
-      title: "อ่านหนังสือเล่มโปรดหรือทำงานอดิเรกเบาๆ ในบ้าน",
-      desc: "ใช้เวลาช่วงว่างอ่านหนังสือที่ชอบ จดบันทึกความรู้สึก หรือทำงานฝีมือเบาๆ เพื่อเติมพลังใจ",
+      title: "จิบเครื่องดื่มอุ่นๆ และพักผ่อนสั้นๆ (15-30 นาที)",
+      desc: "นั่งพักหายใจสบายๆ พร้อมเครื่องดื่มอุ่นๆ เพื่อให้ร่างกายได้ฟื้นตัวระหว่างวัน",
     },
   ];
 
+  // 30+ minutes: longer recharge
   const longActivities = [
     {
-      title: "พักผ่อนส่วนตัวหรือเดินสูดอากาศหน้าบ้าน (เมื่อมีผู้ช่วยดูแลแทน)",
-      desc: "หากมีสมาชิกครอบครัวช่วยเฝ้าดูแลแทน สามารถออกไปเดินผ่อนคลายใกล้บ้าน หรือพักงีบเติมพลังได้ครับ",
+      title: "ทำงานอดิเรกเบาๆ หรือเดินผ่อนคลาย (30-60 นาที)",
+      desc: "ใช้เวลาว่างทำงานอดิเรกที่ชอบ อ่านหนังสือ หรือเดินผ่อนคลายใกล้บ้านเมื่อมีสมาชิกช่วยดูแลแทน",
+    },
+    {
+      title: "พักงีบหรือผ่อนคลายเต็มที่ใกล้ห้องดูแล (30-60 นาที)",
+      desc: "พักผ่อนเติมพลังในพื้นที่ที่ยังได้ยินเสียงผู้สูงอายุได้ชัดเจน หรือสลับให้สมาชิกในครอบครัวช่วยดูแลชั่วคราว",
     },
   ];
 
   return gaps.map((gap, idx) => {
     const pool =
-      gap.duration_minutes <= 35
-        ? shortActivities
-        : gap.duration_minutes <= 75
+      gap.duration_minutes < 15
+        ? microActivities
+        : gap.duration_minutes < 30
         ? mediumActivities
         : longActivities;
     const chosen = pool[idx % pool.length];

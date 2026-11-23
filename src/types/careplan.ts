@@ -317,3 +317,70 @@ export interface SessionState {
   weekly_schedule: WeeklyScheduleTemplate | null;
   reminder_preference: ReminderPreference | null;
 }
+
+// ============================================================
+// Phase 7 — Apple Calendar-Style Custom Calendar Events
+// ============================================================
+
+export type CalendarEventRecurrence = "never" | "daily" | "weekly" | "monthly";
+
+export interface CalendarEventRecord {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string;
+  start_date: string; // "YYYY-MM-DD" in Asia/Bangkok
+  end_date: string; // "YYYY-MM-DD" in Asia/Bangkok
+  start_time: string; // "HH:mm" (ignored when is_all_day = true)
+  end_time: string; // "HH:mm"
+  is_all_day: boolean;
+  recurrence: CalendarEventRecurrence;
+  until_date: string | null; // optional end date for recurrence ("YYYY-MM-DD")
+  excluded_dates: string[]; // single occurrences deleted or split out
+  reminder_minutes: number | null; // e.g., 0, 15, 30, 60, null = none
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CalendarEventOccurrence {
+  occurrence_key: string; // `${event_id}:${occurrence_date}`
+  event_id: string;
+  occurrence_date: string; // "YYYY-MM-DD"
+  end_date: string; // "YYYY-MM-DD"
+  title: string;
+  description: string;
+  start_time: string;
+  end_time: string;
+  is_all_day: boolean;
+  recurrence: CalendarEventRecurrence;
+  reminder_minutes: number | null;
+  is_recurring_instance: boolean;
+}
+
+export interface CreateCalendarEventInput {
+  title: string;
+  description?: string;
+  start_date: string;
+  end_date?: string;
+  start_time?: string;
+  end_time?: string;
+  is_all_day?: boolean;
+  recurrence?: CalendarEventRecurrence;
+  until_date?: string | null;
+  reminder_minutes?: number | null;
+}
+
+export interface UpdateCalendarEventInput {
+  title?: string;
+  description?: string;
+  start_date?: string;
+  end_date?: string;
+  start_time?: string;
+  end_time?: string;
+  is_all_day?: boolean;
+  recurrence?: CalendarEventRecurrence;
+  until_date?: string | null;
+  reminder_minutes?: number | null;
+  edit_scope?: "all" | "single" | "future";
+  occurrence_date?: string; // required for "single" or "future" edits
+}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bell,
+  Calendar,
   CalendarCheck2,
   CalendarRange,
   CheckCheck,
@@ -42,6 +43,12 @@ const NAV_ITEMS = [
     label: "ตารางสัปดาห์",
     fullLabel: "ตารางสัปดาห์",
     icon: CalendarRange,
+  },
+  {
+    href: "/calendar",
+    label: "ปฏิทิน",
+    fullLabel: "ปฏิทินและกิจกรรม",
+    icon: Calendar,
   },
   {
     href: "/history",
@@ -378,7 +385,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               {session?.gemini_configured ? (
                 <Badge variant="sage">Gemini AI พร้อมใช้งาน</Badge>
               ) : (
-                <Badge variant="neutral">โหมดจัดตารางอัตโนมัติ (Fallback)</Badge>
+                <Badge variant="neutral">โหมดสาธิต AI (ไม่ได้เรียก Gemini API)</Badge>
               )}
             </div>
 
@@ -424,9 +431,14 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
                     {/* Reminder Engine Test Controls */}
                     <div className="border-b border-[#E3E9E3] bg-[#FAFBF9] px-4 py-3 space-y-2">
-                      <p className="text-xs font-medium text-[#17241D]">
-                        ทดสอบระบบแจ้งเตือนหลังบ้าน (Reminder Engine)
-                      </p>
+                      <div>
+                        <p className="text-xs font-medium text-[#17241D]">
+                          ทดลองการแจ้งเตือน (Demo Trigger)
+                        </p>
+                        <p className="text-[11px] text-[#66736B]">
+                          ส่งการแจ้งเตือนทดสอบทันทีตามเวลาที่เลือก (แยกจากการแจ้งเตือนตามตารางจริง)
+                        </p>
+                      </div>
                       <div className="flex items-center gap-2">
                         <label className="sr-only" htmlFor="sim-time-input">
                           เวลาที่ต้องการจำลอง
@@ -446,7 +458,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                           className="flex-1 text-xs h-8"
                         >
                           <Clock className="h-3.5 w-3.5" />
-                          จำลองการแจ้งเตือน (ทดสอบ)
+                          ทดลองการแจ้งเตือน
                         </Button>
                       </div>
                       {simFeedback && (
@@ -552,7 +564,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         aria-label="เมนูหลักบนมือถือ"
         className="no-print lg:hidden fixed bottom-0 inset-x-0 z-30 border-t border-[#E3E9E3] bg-[#FFFFFF]"
       >
-        <div className="grid grid-cols-5 h-15">
+        <div className="grid grid-cols-6 h-15">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const active = isNavActive(item.href);
@@ -562,12 +574,12 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors",
+                  "flex flex-col items-center justify-center gap-0.5 px-0.5 text-[10px] font-medium transition-colors min-w-0",
                   active ? "text-[#256B4A]" : "text-[#66736B]"
                 )}
               >
-                <Icon className="h-4 w-4" />
-                <span className="truncate">{item.label}</span>
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="truncate max-w-full">{item.label}</span>
               </Link>
             );
           })}

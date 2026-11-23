@@ -1,7 +1,10 @@
 import type {
   AiScheduleProposalResponse,
+  CalendarEventOccurrence,
+  CalendarEventRecord,
   CareRecipientProfile,
   CompletionEvidence,
+  CreateCalendarEventInput,
   DailySummaryMetrics,
   DailySummaryRecord,
   DailyTaskOccurrence,
@@ -20,6 +23,7 @@ import type {
   TaskHistoryEntry,
   TaskPriority,
   TextToTaskResponse,
+  UpdateCalendarEventInput,
   UserProfile,
   WeeklyScheduleTemplate,
 } from "@/types/careplan";
@@ -406,6 +410,56 @@ export function markReminderRead(
 ): Promise<{ notification?: NotificationDeliveryLog; ok?: boolean }> {
   return apiRequest(`/api/reminders/${encodeURIComponent(id)}/read`, {
     method: "PATCH",
+  });
+}
+
+// ============================================================
+// Calendar Events (Apple Calendar-style CRUD)
+// ============================================================
+
+export function getCalendarEvents(
+  start?: string,
+  end?: string
+): Promise<{
+  events: CalendarEventRecord[];
+  occurrences: CalendarEventOccurrence[];
+}> {
+  const qs = new URLSearchParams();
+  if (start) qs.set("start", start);
+  if (end) qs.set("end", end);
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return apiRequest(`/api/calendar/events${query}`);
+}
+
+export function createCalendarEvent(
+  payload: CreateCalendarEventInput
+): Promise<{ event: CalendarEventRecord }> {
+  return apiRequest("/api/calendar/events", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateCalendarEvent(
+  id: string,
+  payload: UpdateCalendarEventInput
+): Promise<{ event: CalendarEventRecord; split_event?: CalendarEventRecord }> {
+  return apiRequest(`/api/calendar/events/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteCalendarEvent(
+  id: string,
+  options?: { scope?: "all" | "single"; occurrenceDate?: string }
+): Promise<{ deleted: true }> {
+  const qs = new URLSearchParams();
+  if (options?.scope) qs.set("scope", options.scope);
+  if (options?.occurrenceDate) qs.set("occurrenceDate", options.occurrenceDate);
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return apiRequest(`/api/calendar/events/${encodeURIComponent(id)}${query}`, {
+    method: "DELETE",
   });
 }
 

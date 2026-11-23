@@ -105,10 +105,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               onClick={handleStartDemo}
             >
               <Play className="h-4 w-4" />
-              เริ่มใช้งานโหมดสาธิต (Hackathon Demo Mode)
+              ทดลองใช้งาน CarePlan
             </Button>
             <p className="text-xs text-[#66736B] text-center">
-              โหมดสาธิตมีข้อมูลตัวอย่างพร้อมทดสอบทุกฟีเจอร์ทันที และบันทึกในเซิร์ฟเวอร์สาธิตอย่างโปร่งใส
+              เข้าสู่โหมดสาธิต (Demo Mode — คุณเมย์ / คุณสมใจ) พร้อมตารางตัวอย่างครบ 7 วันทันที
             </p>
           </div>
 

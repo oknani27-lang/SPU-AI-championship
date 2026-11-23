@@ -147,10 +147,10 @@ export default function LoginPage() {
             className="w-full"
           >
             <Play className="h-4 w-4" />
-            เข้าใช้งานโหมดสาธิต (Hackathon Demo Mode)
+            ทดลองใช้งาน CarePlan
           </Button>
           <p className="text-xs text-[#66736B] text-center">
-            ทดลองใช้งานทุกฟีเจอร์ได้ทันทีโดยไม่ต้องสมัครสมาชิก
+            เข้าใช้งานโหมดสาธิต (Demo Mode) พร้อมตารางตัวอย่าง 7 วันทันทีโดยไม่ต้องสมัครสมาชิก
           </p>
         </div>
 

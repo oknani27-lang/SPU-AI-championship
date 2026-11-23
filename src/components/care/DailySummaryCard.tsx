@@ -1,15 +1,21 @@
 "use client";
 
 import * as React from "react";
-import { CheckCircle2, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { AlertCircle, CheckCircle2, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
-import { generateDailySummary, getDailySummary } from "@/lib/api-client";
-import { formatThaiDate, TONE_LABELS } from "@/lib/utils";
+import {
+  generateDailySummary,
+  getDailySummary,
+  getOccurrencesByDate,
+} from "@/lib/api-client";
+import { formatThaiDate, PRIORITY_META, TONE_LABELS } from "@/lib/utils";
 import type {
   DailySummaryMetrics,
   DailySummaryRecord,
+  DailyTaskOccurrence,
 } from "@/types/careplan";
 
 export interface DailySummaryCardProps {
@@ -29,6 +35,9 @@ export function DailySummaryCard({
   const [metrics, setMetrics] = React.useState<DailySummaryMetrics | null>(
     null
   );
+  const [incompleteTasks, setIncompleteTasks] = React.useState<
+    DailyTaskOccurrence[]
+  >([]);
   const [loading, setLoading] = React.useState(true);
   const [generating, setGenerating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -37,9 +46,15 @@ export function DailySummaryCard({
     setLoading(true);
     setError(null);
     try {
-      const res = await getDailySummary(date);
+      const [res, occRes] = await Promise.all([
+        getDailySummary(date),
+        getOccurrencesByDate(date),
+      ]);
       setSummary(res.summary);
       setMetrics(res.metrics);
+      setIncompleteTasks(
+        (occRes.occurrences || []).filter((o) => o.status !== "completed")
+      );
       onMetricsLoaded?.(res.metrics);
     } catch (err) {
       setError(
@@ -185,7 +200,7 @@ export function DailySummaryCard({
                 </Badge>
                 <span className="text-[11px] text-[#66736B]">
                   {summary.used_fallback
-                    ? "ข้อความสรุปอัตโนมัติ (Fallback)"
+                    ? "โหมดสาธิต (Demo Mode — ไม่ได้เรียก Gemini API)"
                     : `สรุปโดย ${summary.ai_provider}`}
                 </span>
               </div>
@@ -206,6 +221,35 @@ export function DailySummaryCard({
               >
                 สร้างสรุปประจำวัน
               </Button>
+            </div>
+          )}
+
+          {/* Unfinished Tasks Highlight (if any) */}
+          {!compact && incompleteTasks.length > 0 && (
+            <div className="rounded-md border border-[#EBCBB2] bg-[#FDF6F0]/60 p-3.5 space-y-2">
+              <p className="text-xs font-semibold text-[#7A441D] flex items-center gap-1.5">
+                <AlertCircle className="h-3.5 w-3.5 text-[#B86A32]" />
+                รายการที่ยังไม่เสร็จในวันนี้ ({incompleteTasks.length} รายการ)
+              </p>
+              <div className="space-y-1.5">
+                {incompleteTasks.map((task) => (
+                  <Link
+                    key={task.id}
+                    href={`/tasks/${task.id}`}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded border border-[#EBCBB2]/70 bg-[#FFFFFF] px-3 py-2 text-xs hover:border-[#B86A32] transition-colors"
+                  >
+                    <span className="font-medium text-[#17241D]">
+                      <span className="font-bold text-[#256B4A] tabular-nums mr-2">
+                        {task.scheduled_time} น.
+                      </span>
+                      {task.title}
+                    </span>
+                    <Badge variant={PRIORITY_META[task.priority].badgeVariant}>
+                      {PRIORITY_META[task.priority].label}
+                    </Badge>
+                  </Link>
+                ))}
+              </div>
             </div>
           )}
 
