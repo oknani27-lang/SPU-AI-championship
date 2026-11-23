@@ -1,4 +1,5 @@
 import type { StorageMode } from "@/types/careplan";
+import { AppError } from "@/lib/errors";
 import { getServerEnv, isSupabaseConfigured } from "@/lib/env";
 import { DemoFileStore } from "@/lib/store/demo-store";
 import { SupabaseStore } from "@/lib/store/supabase-store";
@@ -66,5 +67,13 @@ export async function getDefaultAuthStore(): Promise<CarePlanStore> {
     const supa = getSupabaseStore();
     if (supa) return supa;
   }
-  return getDemoStore();
+  const env = getServerEnv();
+  if (env.demoModeForced) {
+    return getDemoStore();
+  }
+  throw new AppError(
+    "ยังไม่ได้เชื่อมต่อฐานข้อมูล Supabase จริง (ไม่พบค่า .env.local หรือยังไม่ได้รัน SQL Migration) กรุณาใช้ปุ่ม 'เข้าสู่โหมดสาธิต (Hackathon Demo Mode)' เพื่อทดลองใช้งาน",
+    503,
+    "LIVE_SUPABASE_NOT_CONFIGURED"
+  );
 }

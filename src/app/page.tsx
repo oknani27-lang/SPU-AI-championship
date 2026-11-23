@@ -138,7 +138,7 @@ function DashboardContent() {
             {formatThaiDate(selectedDate)}
           </p>
           <h1 className="text-2xl font-bold text-[#17241D] leading-snug mt-0.5">
-            สวัสดีคุณ{caregiverName} — แผนดูแล{recipientName}
+            สวัสดี{caregiverName.startsWith("คุณ") ? caregiverName : `คุณ${caregiverName}`} — แผนดูแล{recipientName}
           </h1>
         </div>
 

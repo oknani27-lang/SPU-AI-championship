@@ -209,16 +209,26 @@ function TaskDetailsContent() {
             {occurrence.title}
           </h1>
 
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#66736B]">
-            <span className="inline-flex items-center gap-1.5">
-              <Calendar className="h-4 w-4 text-[#256B4A]" />
-              {formatThaiDate(occurrence.occurrence_date)}
-            </span>
-            <span className="inline-flex items-center gap-1.5 font-medium text-[#17241D]">
-              <Clock className="h-4 w-4 text-[#256B4A]" />
-              เวลา {occurrence.scheduled_time} น. (
-              {formatDuration(occurrence.duration_minutes)})
-            </span>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#66736B]">
+              <span className="inline-flex items-center gap-1.5">
+                <Calendar className="h-4 w-4 text-[#256B4A]" />
+                {formatThaiDate(occurrence.occurrence_date)}
+              </span>
+              <span className="inline-flex items-center gap-1.5 font-medium text-[#17241D]">
+                <Clock className="h-4 w-4 text-[#256B4A]" />
+                เวลา {occurrence.scheduled_time} น. (
+                {formatDuration(occurrence.duration_minutes)})
+              </span>
+            </div>
+            <a
+              href={`/api/calendar/ics?occurrenceId=${encodeURIComponent(occurrence.id)}&recurring=1`}
+              download
+              className="inline-flex items-center gap-1.5 rounded-md border border-[#E3E9E3] bg-[#FAFBF9] px-3 py-1.5 text-xs font-medium text-[#17241D] hover:bg-[#EAF3EC] transition-colors"
+            >
+              <Calendar className="h-3.5 w-3.5 text-[#256B4A]" />
+              เพิ่มลง Apple Calendar (.ics)
+            </a>
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-import { GoneError, NotFoundError } from "@/lib/errors";
+import { NotFoundError } from "@/lib/errors";
 import { handleApiError, jsonOk } from "@/lib/http";
 import {
   getDemoStore,
@@ -14,28 +14,22 @@ export async function GET(
     const { token } = await context.params;
     const now = new Date();
 
+    // Strict Demo vs Live token isolation: demo_* tokens ONLY resolve from DemoFileStore
+    if (token.startsWith("demo_")) {
+      const payload = await getDemoStore().getPublicSharedSchedule(token, now);
+      return jsonOk(payload);
+    }
+
     const liveReady = await isLiveSupabaseReady();
     if (liveReady) {
       const supa = getSupabaseStore();
       if (supa) {
-        try {
-          const payload = await supa.getPublicSharedSchedule(token, now);
-          return jsonOk(payload);
-        } catch (err) {
-          if (err instanceof GoneError) {
-            throw err;
-          }
-          if (!(err instanceof NotFoundError)) {
-            throw err;
-          }
-          // Fall through to demo store if token was created during Demo Mode
-        }
+        const payload = await supa.getPublicSharedSchedule(token, now);
+        return jsonOk(payload);
       }
     }
 
-    const demoStore = getDemoStore();
-    const payload = await demoStore.getPublicSharedSchedule(token, now);
-    return jsonOk(payload);
+    throw new NotFoundError("ไม่พบลิงก์ตารางดูแลที่ระบุ");
   } catch (err) {
     return handleApiError(err);
   }

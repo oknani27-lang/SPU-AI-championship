@@ -104,9 +104,39 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   }, []);
 
   React.useEffect(() => {
-    if (session?.authenticated) {
-      void loadNotifications();
-    }
+    if (!session?.authenticated) return;
+    void loadNotifications();
+
+    // Open-tab automatic reminder check every 60 seconds (respecting user preference & quiet hours on server)
+    const runOpenTabCheck = async () => {
+      try {
+        const res = await processReminders({ date: getBangkokToday() });
+        if (res.delivered && res.delivered.length > 0) {
+          await loadNotifications();
+          if (
+            typeof window !== "undefined" &&
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            for (const item of res.delivered.slice(0, 2)) {
+              try {
+                new Notification(item.title, { body: item.body });
+              } catch {
+                // Ignore restricted browser notification errors
+              }
+            }
+          }
+        }
+      } catch {
+        // Ignore transient background poll errors
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void runOpenTabCheck();
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
   }, [session?.authenticated, demoVersion, loadNotifications]);
 
   // Close notification popover on outside click / Esc

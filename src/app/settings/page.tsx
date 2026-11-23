@@ -532,7 +532,88 @@ function SettingsContent() {
         {shareLinks.length === 0 ? (
           <p className="text-sm text-[#66736B]">ยังไม่มีประวัติการสร้างลิงก์แชร์</p>
         ) : (
-          <div className="overflow-x-auto rounded-md border border-[#E3E9E3]">
+          <>
+            {/* Mobile Stacked Cards (No Horizontal Scroll Clipping) */}
+            <div className="sm:hidden space-y-2.5">
+              {shareLinks.map((link) => {
+                const isRevoked = Boolean(link.revoked_at);
+                const isExpired =
+                  link.expires_at &&
+                  new Date(link.expires_at).getTime() < Date.now();
+                return (
+                  <div
+                    key={link.id}
+                    className="rounded-md border border-[#E3E9E3] bg-[#FAFBF9] p-3 space-y-2"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant="sage">
+                          {link.scope === "week" ? "รายสัปดาห์" : "รายวัน"}
+                        </Badge>
+                        <span className="text-xs font-medium text-[#17241D]">
+                          {formatThaiDate(link.target_date, {
+                            includeWeekday: false,
+                          })}
+                        </span>
+                      </div>
+                      {isRevoked ? (
+                        <Badge variant="neutral">ยกเลิกแล้ว</Badge>
+                      ) : isExpired ? (
+                        <Badge variant="warning">หมดอายุแล้ว</Badge>
+                      ) : (
+                        <Badge variant="sage">เปิดใช้งาน</Badge>
+                      )}
+                    </div>
+                    <div className="text-xs text-[#66736B] space-y-0.5">
+                      <p>
+                        บันทึกส่วนตัว:{" "}
+                        {link.include_private_notes ? "รวมไว้" : "ซ่อนไว้"}
+                      </p>
+                      {!isRevoked && !isExpired && (
+                        <p>
+                          หมดอายุ:{" "}
+                          {link.expires_at
+                            ? formatThaiDateTime(link.expires_at)
+                            : "ไม่มีกำหนด"}
+                        </p>
+                      )}
+                    </div>
+                    {!isRevoked && !isExpired && (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            void handleCopyShareUrl(link.token, link.id)
+                          }
+                          className="h-8 px-2.5 text-xs flex-1"
+                        >
+                          {copiedId === link.id ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                          {copiedId === link.id ? "คัดลอกแล้ว" : "คัดลอก"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="warning"
+                          loading={revokingId === link.id}
+                          onClick={() => void handleRevokeLink(link.id)}
+                          className="h-8 px-2.5 text-xs flex-1"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          ยกเลิกลิงก์
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop / Tablet Table */}
+            <div className="hidden sm:block overflow-x-auto rounded-md border border-[#E3E9E3]">
             <table className="w-full text-left text-sm">
               <thead className="bg-[#FAFBF9] border-b border-[#E3E9E3] text-xs text-[#66736B]">
                 <tr>
@@ -617,6 +698,7 @@ function SettingsContent() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
 

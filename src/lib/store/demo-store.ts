@@ -1878,7 +1878,7 @@ export class DemoFileStore implements CarePlanStore {
       ).toISOString();
     }
 
-    const token = crypto.randomBytes(24).toString("base64url");
+    const token = `demo_${crypto.randomBytes(24).toString("base64url")}`;
     const link: ShareLinkRecord = {
       id: crypto.randomUUID(),
       user_id: userId,

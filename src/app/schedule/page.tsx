@@ -3,10 +3,12 @@
 import * as React from "react";
 import Link from "next/link";
 import {
+  CalendarDays,
   CalendarRange,
   CheckCircle2,
   Clock,
   Edit3,
+  List,
   Lock,
   Plus,
   Share2,
@@ -17,6 +19,10 @@ import {
 import { AppShell } from "@/components/layout/AppShell";
 import { useSession } from "@/components/care/SessionContext";
 import { SevenDaySelector } from "@/components/care/SevenDaySelector";
+import {
+  AppleCalendarView,
+  type AppleCalendarDayColumn,
+} from "@/components/care/AppleCalendarView";
 import { TextToTaskComposer } from "@/components/care/TextToTaskComposer";
 import { AiScheduleReviewModal } from "@/components/care/AiScheduleReviewModal";
 import { ShareScheduleDialog } from "@/components/share/ShareScheduleDialog";
@@ -28,17 +34,20 @@ import { Switch } from "@/components/ui/switch";
 import { Alert } from "@/components/ui/alert";
 import {
   getOccurrencesByDate,
+  getOccurrencesByWeek,
   getSchedule,
   updateRestDay,
   updateTemplateForFuture,
 } from "@/lib/api-client";
 import {
+  cn,
   createTempId,
   formatDuration,
   formatThaiDate,
   getBangkokToday,
   getDayOfWeek,
   getNextOccurrenceDateForWeekday,
+  getWeekMonday,
   PRIORITY_META,
 } from "@/lib/utils";
 import {
@@ -72,6 +81,10 @@ function WeeklyScheduleContent() {
   const [dayOccurrences, setDayOccurrences] = React.useState<
     DailyTaskOccurrence[]
   >([]);
+  const [weekDaysData, setWeekDaysData] = React.useState<
+    AppleCalendarDayColumn[]
+  >([]);
+  const [viewMode, setViewMode] = React.useState<"list" | "calendar">("list");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [feedback, setFeedback] = React.useState<string | null>(null);
@@ -120,13 +133,16 @@ function WeeklyScheduleContent() {
     setLoading(true);
     setError(null);
     try {
-      const [schedRes, occRes] = await Promise.all([
+      const weekMonday = getWeekMonday(date);
+      const [schedRes, occRes, weekRes] = await Promise.all([
         getSchedule(),
         getOccurrencesByDate(date),
+        getOccurrencesByWeek(weekMonday),
       ]);
       setWeeklySchedule(schedRes.weekly_schedule);
       setTemplates(schedRes.templates || []);
       setDayOccurrences(occRes.occurrences || []);
+      setWeekDaysData(weekRes.days || []);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "ไม่สามารถโหลดตารางสัปดาห์ได้"
@@ -294,14 +310,53 @@ function WeeklyScheduleContent() {
           </p>
         </div>
 
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => setShareOpen(true)}
-        >
-          <Share2 className="h-4 w-4" />
-          แชร์ตารางสัปดาห์ให้ครอบครัว
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            role="tablist"
+            aria-label="รูปแบบการแสดงตาราง"
+            className="inline-flex rounded-md border border-[#E3E9E3] bg-[#FFFFFF] p-0.5"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "list"}
+              onClick={() => setViewMode("list")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
+                viewMode === "list"
+                  ? "bg-[#256B4A] text-white"
+                  : "text-[#66736B] hover:text-[#17241D]"
+              )}
+            >
+              <List className="h-3.5 w-3.5" />
+              รายการ
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "calendar"}
+              onClick={() => setViewMode("calendar")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
+                viewMode === "calendar"
+                  ? "bg-[#256B4A] text-white"
+                  : "text-[#66736B] hover:text-[#17241D]"
+              )}
+            >
+              <CalendarDays className="h-3.5 w-3.5" />
+              ปฏิทิน (Apple Calendar)
+            </button>
+          </div>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setShareOpen(true)}
+          >
+            <Share2 className="h-4 w-4" />
+            แชร์ตารางสัปดาห์ให้ครอบครัว
+          </Button>
+        </div>
       </div>
 
       {/* 7-Day Selector */}
@@ -313,6 +368,16 @@ function WeeklyScheduleContent() {
 
       {error && <Alert variant="error">{error}</Alert>}
       {feedback && <Alert variant="success">{feedback}</Alert>}
+
+      {/* Apple Calendar-Style Weekly/Daily Time Grid View */}
+      {viewMode === "calendar" && (
+        <AppleCalendarView
+          days={weekDaysData}
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+          weekStartDate={getWeekMonday(selectedDate)}
+        />
+      )}
 
       {/* Rest Day Toggle Card */}
       <div className="rounded-lg border border-[#E3E9E3] bg-[#FFFFFF] p-4 space-y-3">

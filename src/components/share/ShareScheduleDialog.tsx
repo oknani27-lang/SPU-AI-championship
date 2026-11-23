@@ -292,9 +292,7 @@ export function ShareScheduleDialog({
 
   const toAbsoluteUrl = (sharePathOrUrl: string, token: string): string => {
     if (typeof window === "undefined") return sharePathOrUrl;
-    if (sharePathOrUrl.startsWith("http")) return sharePathOrUrl;
-    const path = sharePathOrUrl || `/share/${token}`;
-    return `${window.location.origin}${path.startsWith("/") ? path : `/${path}`}`;
+    return `${window.location.origin}/share/${token}`;
   };
 
   const loadExistingLinks = async () => {
@@ -644,6 +642,15 @@ export function ShareScheduleDialog({
               <Printer className="h-4 w-4" />
               พิมพ์ / บันทึกเป็น PDF
             </Button>
+
+            <a
+              href={`/api/calendar/ics?scope=${scope}&date=${encodeURIComponent(defaultDate)}&includeNotes=${includePrivateNotes ? "1" : "0"}`}
+              download
+              className="inline-flex h-10 items-center justify-start gap-2 rounded-md border border-[#E3E9E3] bg-[#FFFFFF] px-4 text-sm font-medium text-[#17241D] hover:bg-[#EAF3EC] transition-colors"
+            >
+              <Download className="h-4 w-4 text-[#256B4A]" />
+              ส่งออก Apple Calendar (.ics)
+            </a>
 
             {canNativeShare && (
               <Button

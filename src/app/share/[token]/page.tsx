@@ -170,6 +170,14 @@ function PublicShareContent() {
               <Printer className="h-4 w-4" />
               พิมพ์ / บันทึก PDF
             </Button>
+            <a
+              href={`/api/share/public/${encodeURIComponent(token)}/ics`}
+              download
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[#E3E9E3] bg-[#FFFFFF] px-3 text-xs font-medium text-[#17241D] hover:bg-[#EAF3EC] transition-colors"
+            >
+              <CalendarCheck2 className="h-3.5 w-3.5 text-[#256B4A]" />
+              เพิ่มลง Apple Calendar (.ics)
+            </a>
           </div>
         </div>
 
