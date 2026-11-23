@@ -1,0 +1,15 @@
+{
+  "name": "bizplan-phase-zero",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Thai-first frontend mockup with no runtime dependencies",
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "check": "node --check app.js && node --check account.js && node --check server.cjs && node --check supabase.cjs && node --check api/index.js && node --check limits.cjs",
+    "start": "node server.cjs",
+    "build": "node scripts/build.cjs"
+  },
+  "engines": {
+    "node": "24.x"
+  }
+}
