@@ -40,6 +40,7 @@ export function DailySummaryCard({
   >([]);
   const [loading, setLoading] = React.useState(true);
   const [generating, setGenerating] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const loadSummary = React.useCallback(async () => {
@@ -204,9 +205,21 @@ export function DailySummaryCard({
                     : `สรุปโดย ${summary.ai_provider}`}
                 </span>
               </div>
-              <p className="text-[15px] text-[#17241D] leading-relaxed">
+              <p
+                className={`text-[15px] text-[#17241D] leading-relaxed ${expanded ? "" : "line-clamp-3"}`}
+              >
                 {summary.encouraging_message}
               </p>
+              {summary.encouraging_message.length > 140 && (
+                <button
+                  type="button"
+                  onClick={() => setExpanded((v) => !v)}
+                  aria-expanded={expanded}
+                  className="text-xs font-medium text-[#256B4A] hover:underline"
+                >
+                  {expanded ? "ย่อข้อความ" : "อ่านต่อ"}
+                </button>
+              )}
             </div>
           ) : (
             <div className="rounded-md border border-[#E3E9E3] bg-[#FAFBF9] p-3.5 flex flex-wrap items-center justify-between gap-2">
@@ -255,7 +268,7 @@ export function DailySummaryCard({
 
           <p className="text-[11px] text-[#66736B] flex items-center gap-1.5">
             <ShieldCheck className="h-3.5 w-3.5 text-[#256B4A] shrink-0" />
-            ตัวเลขสถิติคำนวณจากบันทึกการยืนยันงานจริงในฐานข้อมูลเท่านั้น (AI ไม่สามารถปรับแต่งตัวเลขได้)
+            ตัวเลขมาจากงานที่ยืนยันจริง — AI แก้ไขตัวเลขไม่ได้
           </p>
         </>
       ) : null}

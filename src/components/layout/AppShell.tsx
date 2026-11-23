@@ -36,38 +36,14 @@ import {
 } from "@/lib/utils";
 import type { NotificationDeliveryLog } from "@/types/careplan";
 
+// label = mobile bottom bar, fullLabel = desktop sidebar
 const NAV_ITEMS = [
-  { href: "/", label: "วันนี้", fullLabel: "วันนี้ / แดชบอร์ด", icon: Home },
-  {
-    href: "/schedule",
-    label: "ตารางสัปดาห์",
-    fullLabel: "ตารางสัปดาห์",
-    icon: CalendarRange,
-  },
-  {
-    href: "/calendar",
-    label: "ปฏิทิน",
-    fullLabel: "ปฏิทินและกิจกรรม",
-    icon: Calendar,
-  },
-  {
-    href: "/history",
-    label: "ประวัติ",
-    fullLabel: "ประวัติการดูแล",
-    icon: History,
-  },
-  {
-    href: "/summary",
-    label: "สรุปวัน",
-    fullLabel: "สรุปประจำวัน",
-    icon: FileBarChart2,
-  },
-  {
-    href: "/settings",
-    label: "ตั้งค่า",
-    fullLabel: "ตั้งค่า",
-    icon: Settings,
-  },
+  { href: "/", label: "วันนี้", fullLabel: "วันนี้", icon: Home },
+  { href: "/schedule", label: "ตาราง", fullLabel: "ตาราง 7 วัน", icon: CalendarRange },
+  { href: "/calendar", label: "ปฏิทิน", fullLabel: "ปฏิทิน", icon: Calendar },
+  { href: "/summary", label: "สรุป", fullLabel: "สรุปผล", icon: FileBarChart2 },
+  { href: "/history", label: "ประวัติ", fullLabel: "ประวัติงาน", icon: History },
+  { href: "/settings", label: "ตั้งค่า", fullLabel: "ตั้งค่า", icon: Settings },
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -344,11 +320,10 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             <div className="mx-auto max-w-6xl flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm text-[#17241D]">
               <div className="flex items-center gap-2 min-w-0">
                 <Badge variant="primary" className="shrink-0">
-                  Demo Mode
+                  Demo
                 </Badge>
                 <span className="leading-snug">
-                  <strong>โหมดสาธิต (Hackathon Demo Mode):</strong>{" "}
-                  ข้อมูลบันทึกอยู่ในเซิร์ฟเวอร์สาธิตในเครื่องเพื่อการทดสอบ (ไม่ใช่ฐานข้อมูลจริง)
+                  โหมดสาธิต — ข้อมูลตัวอย่าง ไม่ใช่ฐานข้อมูลจริง
                 </span>
               </div>
               <Button
@@ -381,11 +356,10 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
             {/* Desktop Context Info */}
             <div className="hidden lg:flex items-center gap-2 text-sm text-[#66736B]">
-              <span>เขตเวลาประเทศไทย (Asia/Bangkok)</span>
               {session?.gemini_configured ? (
                 <Badge variant="sage">Gemini AI พร้อมใช้งาน</Badge>
               ) : (
-                <Badge variant="neutral">โหมดสาธิต AI (ไม่ได้เรียก Gemini API)</Badge>
+                <Badge variant="neutral">AI โหมดสาธิต (ไม่ได้เรียก Gemini)</Badge>
               )}
             </div>
 
