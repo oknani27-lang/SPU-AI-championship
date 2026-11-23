@@ -1,12 +1,25 @@
-
-# Local secrets; only the placeholder template may be committed.
+# Local secrets — NEVER commit real .env files
 .env
 .env.*
 !.env.example
 
-# Local usage counters (no conversation data)
-.runtime/
-
-# Generated build and local Vercel metadata
+# Next.js / build artifacts
+.next/
+out/
 dist/
+build/
 .vercel/
+
+# Dependencies
+node_modules/
+
+# Local runtime & demo storage (never commit user/demo data or uploaded evidence)
+.runtime/
+.careplan-demo-store/
+
+# Logs & OS files
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+coverage/
