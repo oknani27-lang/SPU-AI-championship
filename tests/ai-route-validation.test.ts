@@ -6,8 +6,17 @@ import { POST as restPost, GET as restGet } from "@/app/api/ai/rest-suggestions/
 import { POST as extractPost } from "@/app/api/ai/text-to-task/route";
 import { POST as schedulePost } from "@/app/api/ai/schedule/route";
 import { POST as approvePost } from "@/app/api/schedule/approve/route";
+import { POST as demoPost } from "@/app/api/auth/demo/route";
 
 describe("AI route invalid input", () => {
+  it("rejects file-backed demo on Vercel before accessing local storage", async () => {
+    vi.stubEnv("VERCEL", "1");
+    try {
+      const response = await demoPost(new Request("https://app.test/api/auth/demo", { method: "POST", body: "{}" }));
+      expect(response.status).toBe(503);
+      expect((await response.json()).code).toBe("HOSTED_DEMO_UNAVAILABLE");
+    } finally { vi.unstubAllEnvs(); }
+  });
   it("rejects duplicate/cyclic draft IDs and overlapping approvals before any store write", async () => {
     const draft = { temp_id: "a", title: "ซักผ้า", duration_minutes: 40 };
     for (const tasks of [[draft, draft], [{ ...draft, depends_on_temp_id: "b" }, { ...draft, temp_id: "b", depends_on_temp_id: "a" }]]) {

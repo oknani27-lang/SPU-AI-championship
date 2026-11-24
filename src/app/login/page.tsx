@@ -68,7 +68,7 @@ export default function LoginPage() {
             <span className="h-7 w-7 rounded-md bg-[#256B4A] text-white flex items-center justify-center">
               <CalendarCheck2 className="h-4 w-4" />
             </span>
-            CarePlan
+            Careplan
           </Link>
           <h1 className="text-2xl font-bold text-[#17241D]">เข้าสู่ระบบ</h1>
           <p className="text-sm text-[#66736B]">
@@ -147,7 +147,7 @@ export default function LoginPage() {
             className="w-full"
           >
             <Play className="h-4 w-4" />
-            ทดลองใช้งาน CarePlan
+            ทดลองใช้งาน Careplan
           </Button>
           <p className="text-xs text-[#66736B] text-center">
             เข้าใช้งานโหมดสาธิต (Demo Mode) พร้อมตารางตัวอย่าง 7 วันทันทีโดยไม่ต้องสมัครสมาชิก

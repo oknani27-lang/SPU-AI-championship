@@ -267,7 +267,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           </div>
           <div className="min-w-0">
             <p className="font-bold text-[16px] leading-tight text-[#17241D]">
-              CarePlan
+              Careplan
             </p>
             <p className="text-xs text-[#66736B] truncate">
               ตารางดูแลรายสัปดาห์
@@ -379,12 +379,12 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             {/* Mobile Brand */}
             <Link
               href="/"
-              className="flex lg:hidden items-center gap-2 font-bold text-[#17241D]"
+              className="flex lg:hidden min-w-0 items-center gap-2 font-bold text-[#17241D]"
             >
               <span className="h-7 w-7 rounded-md bg-[#256B4A] text-white flex items-center justify-center">
                 <CalendarCheck2 className="h-4 w-4" />
               </span>
-              <span>CarePlan</span>
+              <span className="truncate">Careplan</span>
             </Link>
 
             {/* Desktop Context Info */}

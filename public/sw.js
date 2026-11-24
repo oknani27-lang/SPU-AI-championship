@@ -5,7 +5,7 @@ self.addEventListener("push", event => {
   let data; try { data = event.data?.json(); } catch { return; }
   if (!data || typeof data.eventId !== "string" || typeof data.date !== "string") return;
   const url = "/calendar?" + new URLSearchParams({ event: data.eventId, date: data.date });
-  event.waitUntil(self.registration.showNotification(String(data.title || "CarePlan").slice(0, 180), { body: String(data.body || "").slice(0, 300), tag: String(data.tag || data.eventId), renotify: false, data: { url } }));
+  event.waitUntil(self.registration.showNotification(String(data.title || "Careplan").slice(0, 180), { body: String(data.body || "").slice(0, 300), tag: String(data.tag || data.eventId), renotify: false, data: { url } }));
 });
 self.addEventListener("notificationclick", event => {
   event.notification.close();

@@ -90,7 +90,7 @@ function PublicShareContent() {
   const handleLineShare = () => {
     if (typeof window === "undefined" || !payload) return;
     const url = window.location.href;
-    const text = `CarePlan: แผนดูแล${payload.care_recipient_label} (${
+    const text = `Careplan: แผนดูแล${payload.care_recipient_label} (${
       payload.scope === "week" ? "รายสัปดาห์ 7 วัน" : "รายวัน"
     })`;
     window.open(
@@ -137,7 +137,7 @@ function PublicShareContent() {
               href="/"
               className="inline-flex h-10 items-center justify-center rounded-md border border-[#E3E9E3] bg-[#FFFFFF] px-4 text-sm font-medium text-[#17241D] hover:bg-[#F4F7F4]"
             >
-              กลับไปหน้าหลัก CarePlan
+              กลับไปหน้าหลัก Careplan
             </Link>
           </div>
         </div>
@@ -154,7 +154,7 @@ function PublicShareContent() {
             <span className="h-7 w-7 rounded-md bg-[#256B4A] text-white flex items-center justify-center">
               <CalendarCheck2 className="h-4 w-4" />
             </span>
-            CarePlan · ตารางดูแลสำหรับครอบครัว
+            Careplan · ตารางดูแลสำหรับครอบครัว
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -318,7 +318,7 @@ function PublicShareContent() {
 
         {/* Footer */}
         <footer className="text-center text-xs text-[#66736B] pt-2 pb-6">
-          แสดงผลแบบอ่านอย่างเดียวผ่าน CarePlan — AI Weekly Care Scheduler
+          แสดงผลแบบอ่านอย่างเดียวผ่าน Careplan — AI Weekly Care Scheduler
         </footer>
       </div>
     </div>

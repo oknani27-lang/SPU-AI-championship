@@ -42,7 +42,7 @@ export async function runPushWorker({ db: providedDb, now = new Date(), send = w
         if (!data?.length) continue;
         const id = data[0].id;
         try {
-          await send({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify({ title: "CarePlan · " + occurrence.title, body: minutes ? `กิจกรรมจะเริ่มใน ${minutes} นาที` : "ถึงเวลากิจกรรมแล้ว", tag: `${occurrence.occurrence_key}:${minutes}`, eventId: occurrence.event_id, date: occurrence.occurrence_date }), { vapidDetails: { publicKey: process.env.VAPID_PUBLIC_KEY!, privateKey: process.env.VAPID_PRIVATE_KEY!, subject: process.env.VAPID_SUBJECT! }, TTL: 300, urgency: "high", timeout: 10000 });
+          await send({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify({ title: "Careplan · " + occurrence.title, body: minutes ? `กิจกรรมจะเริ่มใน ${minutes} นาที` : "ถึงเวลากิจกรรมแล้ว", tag: `${occurrence.occurrence_key}:${minutes}`, eventId: occurrence.event_id, date: occurrence.occurrence_date }), { vapidDetails: { publicKey: process.env.VAPID_PUBLIC_KEY!, privateKey: process.env.VAPID_PRIVATE_KEY!, subject: process.env.VAPID_SUBJECT! }, TTL: 300, urgency: "high", timeout: 10000 });
           const saved = await db.from("careplan_push_deliveries").update({ status: "sent", sent_at: now.toISOString() }).eq("id", id).eq("lease_token", lease);
           if (saved.error) throw new Error("Unable to record push delivery");
           result.sent++;

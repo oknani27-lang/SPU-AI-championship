@@ -13,9 +13,9 @@ const sarabun = Sarabun({
 
 export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, title: "CarePlan", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "Careplan", statusBarStyle: "default" },
   icons: { apple: "/careplan-192.png" },
-  title: "CarePlan — ผู้ช่วยจัดตารางดูแลผู้สูงอายุรายสัปดาห์",
+  title: "Careplan — ผู้ช่วยจัดตารางดูแลผู้สูงอายุรายสัปดาห์",
   description:
     "ระบบวางแผนและติดตามตารางดูแลผู้สูงอายุรายสัปดาห์สำหรับผู้ดูแลที่บ้าน พร้อมยืนยันภาพถ่าย สรุปผลประจำวัน และแชร์ตารางให้ครอบครัวผ่าน LINE",
 };

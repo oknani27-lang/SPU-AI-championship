@@ -35,7 +35,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               <CalendarCheck2 className="h-5 w-5" />
             </div>
             <div>
-              <p className="font-semibold text-[#17241D]">CarePlan</p>
+              <p className="font-semibold text-[#17241D]">Careplan</p>
               <p className="text-sm text-[#66736B]">กำลังตรวจสอบสถานะการใช้งาน...</p>
             </div>
           </div>
@@ -55,7 +55,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-md border border-[#D4E6D8] bg-[#EAF3EC] px-2.5 py-1 text-xs font-medium text-[#1E583C]">
               <CalendarCheck2 className="h-3.5 w-3.5" />
-              CarePlan — AI Weekly Care Scheduler
+              Careplan — AI Weekly Care Scheduler
             </div>
             <h1 className="text-2xl font-bold text-[#17241D] leading-snug">
               วางแผนดูแลผู้สูงอายุรายสัปดาห์อย่างเป็นระบบและสบายใจ
@@ -105,7 +105,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               onClick={handleStartDemo}
             >
               <Play className="h-4 w-4" />
-              ทดลองใช้งาน CarePlan
+              ทดลองใช้งาน Careplan
             </Button>
             <p className="text-xs text-[#66736B] text-center">
               เข้าสู่โหมดสาธิต (Demo Mode — คุณเมย์ / คุณสมใจ) พร้อมตารางตัวอย่างครบ 7 วันทันที

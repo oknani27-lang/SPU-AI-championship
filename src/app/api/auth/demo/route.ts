@@ -2,6 +2,7 @@ import { z } from "zod";
 import { setSessionCookie } from "@/lib/auth";
 import { handleApiError, jsonOk } from "@/lib/http";
 import { getDemoStore } from "@/lib/store";
+import { AppError } from "@/lib/errors";
 
 const demoBodySchema = z
   .object({
@@ -11,6 +12,7 @@ const demoBodySchema = z
 
 export async function POST(request: Request) {
   try {
+    if (process.env.VERCEL === "1") throw new AppError("โหมดสาธิตเก็บข้อมูลในเครื่อง ใช้บน Vercel ไม่ได้ กรุณาเชื่อม Supabase แล้วเข้าสู่ระบบด้วยบัญชีผู้ใช้", 503, "HOSTED_DEMO_UNAVAILABLE");
     const url = new URL(request.url);
     const resetParam =
       url.searchParams.get("reset") === "1" ||

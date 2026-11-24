@@ -1,6 +1,6 @@
 {
-  "name": "CarePlan",
-  "short_name": "CarePlan",
+  "name": "Careplan",
+  "short_name": "Careplan",
   "id": "/",
   "start_url": "/calendar",
   "scope": "/",

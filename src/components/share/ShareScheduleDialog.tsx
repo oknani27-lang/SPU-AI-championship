@@ -241,8 +241,8 @@ function renderSchedulePng(payload: SharedSchedulePayload): string {
   ctx.font = `400 12px ${fontFamily}`;
   ctx.fillText(
     payload.include_private_notes
-      ? "สร้างจาก CarePlan · รวมบันทึกส่วนตัวตามที่ผู้ดูแลเลือก"
-      : "สร้างจาก CarePlan · ซ่อนบันทึกส่วนตัวเพื่อความเป็นส่วนตัวของครอบครัว",
+      ? "สร้างจาก Careplan · รวมบันทึกส่วนตัวตามที่ผู้ดูแลเลือก"
+      : "สร้างจาก Careplan · ซ่อนบันทึกส่วนตัวเพื่อความเป็นส่วนตัวของครอบครัว",
     padding,
     height - 26
   );
@@ -374,7 +374,7 @@ export function ShareScheduleDialog({
       const target = await ensureShareLink();
       const scopeText =
         scope === "week" ? "ตารางดูแลรายสัปดาห์ (7 วัน)" : "ตารางดูแลประจำวัน";
-      const text = `CarePlan: ${scopeText}ของ${careRecipientName} (${formatThaiDate(
+      const text = `Careplan: ${scopeText}ของ${careRecipientName} (${formatThaiDate(
         defaultDate,
         { includeWeekday: false }
       )}) ดูรายละเอียดได้ที่ลิงก์นี้:`;
@@ -431,7 +431,7 @@ export function ShareScheduleDialog({
     try {
       const target = await ensureShareLink();
       await navigator.share({
-        title: `ตารางดูแล${careRecipientName} — CarePlan`,
+        title: `ตารางดูแล${careRecipientName} — Careplan`,
         text: `แผนดูแล${careRecipientName} (${
           scope === "week" ? "รายสัปดาห์" : "รายวัน"
         })`,
