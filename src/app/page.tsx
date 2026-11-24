@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { CalendarPlus, Plus, Share2, Sun } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useSession } from "@/components/care/SessionContext";
 import { TaskListRow } from "@/components/care/TaskListRow";
-import { TextToTaskComposer } from "@/components/care/TextToTaskComposer";
-import { AiScheduleReviewModal } from "@/components/care/AiScheduleReviewModal";
-import { ShareScheduleDialog } from "@/components/share/ShareScheduleDialog";
+const TextToTaskComposer = dynamic(() => import("@/components/care/TextToTaskComposer").then(module => module.TextToTaskComposer));
+const AiScheduleReviewModal = dynamic(() => import("@/components/care/AiScheduleReviewModal").then(module => module.AiScheduleReviewModal));
+const ShareScheduleDialog = dynamic(() => import("@/components/share/ShareScheduleDialog").then(module => module.ShareScheduleDialog));
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { getOccurrencesByDate } from "@/lib/api-client";
@@ -222,21 +223,21 @@ function DashboardContent() {
         )}
       </section>
 
-      <AiScheduleReviewModal
+      {aiModal.open && <AiScheduleReviewModal
         open={aiModal.open}
         onClose={() => setAiModal((prev) => ({ ...prev, open: false }))}
         dayOfWeek={aiModal.dayOfWeek}
         draftTasks={aiModal.drafts}
         onApproved={afterSave}
-      />
+      />}
 
-      <ShareScheduleDialog
+      {shareOpen && <ShareScheduleDialog
         open={shareOpen}
         onClose={() => setShareOpen(false)}
         defaultDate={today}
         defaultScope="week"
         careRecipientName={recipientName}
-      />
+      />}
     </div>
   );
 }

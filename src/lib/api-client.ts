@@ -61,7 +61,26 @@ function defaultThaiErrorForStatus(status: number): string {
   }
 }
 
-async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+const pendingReads = new Map<string, Promise<unknown>>();
+
+function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const isRead = !init?.method || init.method.toUpperCase() === "GET";
+  // Coalesce simultaneous reads only; never retain completed private data.
+  if (!isRead) {
+    pendingReads.clear();
+    return performApiRequest<T>(path, init).finally(() => pendingReads.clear());
+  }
+  if (init?.signal || init?.headers || typeof window === "undefined") return performApiRequest<T>(path, init);
+  const existing = pendingReads.get(path);
+  if (existing) return existing as Promise<T>;
+  const request = performApiRequest<T>(path, init).finally(() => {
+    if (pendingReads.get(path) === request) pendingReads.delete(path);
+  });
+  pendingReads.set(path, request);
+  return request;
+}
+
+async function performApiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
     const headers = new Headers(init?.headers);
@@ -364,6 +383,8 @@ export function getRestSuggestions(date: string): Promise<{
 
 export function generateRestSuggestions(date: string): Promise<{
   suggestions: RestSuggestionRecord[];
+  ai?: { provider: string; used_fallback: boolean };
+  fallback_reason?: string;
 }> {
   return apiRequest("/api/ai/rest-suggestions", {
     method: "POST",
@@ -452,7 +473,7 @@ export function updateCalendarEvent(
 
 export function deleteCalendarEvent(
   id: string,
-  options?: { scope?: "all" | "single"; occurrenceDate?: string }
+  options?: { scope?: "all" | "single" | "future"; occurrenceDate?: string }
 ): Promise<{ deleted: true }> {
   const qs = new URLSearchParams();
   if (options?.scope) qs.set("scope", options.scope);

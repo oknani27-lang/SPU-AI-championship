@@ -16,6 +16,7 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { approveSchedule, generateAiSchedule } from "@/lib/api-client";
+import { scheduleProblem } from "@/lib/ai/schedule-validation";
 import { formatDuration, PRIORITY_META } from "@/lib/utils";
 import {
   THAI_DAY_NAMES,
@@ -50,34 +51,43 @@ export function AiScheduleReviewModal({
   const [editableTasks, setEditableTasks] = React.useState<
     ProposedScheduleTask[]
   >([]);
+  const proposalGeneration = React.useRef(0);
+  const savingLock = React.useRef(false);
+  const validationProblem = editableTasks.length ? scheduleProblem(editableTasks) : null;
 
   const runProposal = React.useCallback(async () => {
     if (draftTasks.length === 0) return;
+    const current = ++proposalGeneration.current;
     setLoading(true);
     setError(null);
     setProposal(null);
+    setEditableTasks([]);
     try {
       const res = await generateAiSchedule({
         day_of_week: dayOfWeek,
         tasks: draftTasks,
       });
+      if (current !== proposalGeneration.current) return;
       setProposal(res);
       setEditableTasks(res.proposed_tasks || []);
     } catch (err) {
+      if (current !== proposalGeneration.current) return;
       setError(
         err instanceof Error
           ? err.message
           : "ไม่สามารถสร้างข้อเสนอตารางเวลาได้"
       );
     } finally {
-      setLoading(false);
+      if (current === proposalGeneration.current) setLoading(false);
     }
   }, [dayOfWeek, draftTasks]);
 
   React.useEffect(() => {
+    const activeGeneration = proposalGeneration;
     if (open) {
       void runProposal();
     }
+    return () => { activeGeneration.current++; };
   }, [open, runProposal]);
 
   const updateTaskField = <K extends keyof ProposedScheduleTask>(
@@ -91,7 +101,9 @@ export function AiScheduleReviewModal({
   };
 
   const handleApprove = async () => {
-    if (editableTasks.length === 0) return;
+    if (editableTasks.length === 0 || savingLock.current || loading) return;
+    if (validationProblem) { setError(validationProblem); return; }
+    savingLock.current = true;
     setApproving(true);
     setError(null);
     try {
@@ -110,6 +122,7 @@ export function AiScheduleReviewModal({
       );
     } finally {
       setApproving(false);
+      savingLock.current = false;
     }
   };
 
@@ -133,7 +146,7 @@ export function AiScheduleReviewModal({
           <Button
             variant="primary"
             loading={approving}
-            disabled={loading || editableTasks.length === 0}
+            disabled={loading || editableTasks.length === 0 || Boolean(validationProblem)}
             onClick={handleApprove}
           >
             <CheckCircle2 className="h-4 w-4" />
@@ -181,6 +194,7 @@ export function AiScheduleReviewModal({
           </Alert>
         )}
 
+        {!loading && validationProblem && <Alert variant="warning">{validationProblem}</Alert>}
         {!loading && proposal && (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -191,7 +205,7 @@ export function AiScheduleReviewModal({
               <Badge variant={proposal.used_fallback ? "warning" : "sage"}>
                 <Sparkles className="h-3 w-3" />
                 {proposal.used_fallback
-                  ? "โหมดสาธิต (Demo Mode — ไม่ได้เรียก Gemini API)"
+                  ? "ใช้ระบบสำรอง · AI ไม่พร้อม"
                   : `สร้างข้อเสนอโดย ${proposal.provider}`}
               </Badge>
             </div>

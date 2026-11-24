@@ -2,6 +2,8 @@ import { z } from "zod";
 import { dayOfWeekSchema, proposedScheduleTaskSchema } from "@/lib/ai/schemas";
 import { requireAuthContext } from "@/lib/auth";
 import { handleApiError, jsonOk } from "@/lib/http";
+import { scheduleProblem } from "@/lib/ai/schedule-validation";
+import { ValidationError } from "@/lib/errors";
 
 const approveSchema = z.object({
   day_of_week: dayOfWeekSchema,
@@ -23,9 +25,12 @@ export async function POST(request: Request) {
     const ctx = await requireAuthContext();
     const rawBody: unknown = await request.json();
     const input = approveSchema.parse(rawBody);
+    const problem = scheduleProblem(input.tasks);
+    if (problem) throw new ValidationError(problem);
     const result = await ctx.store.approveScheduleTasks(ctx.userId, input);
     return jsonOk(result, 201);
   } catch (err) {
+    if (err instanceof SyntaxError) return handleApiError(new ValidationError("ข้อมูล JSON ไม่ถูกต้อง"));
     return handleApiError(err);
   }
 }

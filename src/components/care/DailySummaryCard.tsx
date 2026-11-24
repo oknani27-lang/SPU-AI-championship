@@ -201,7 +201,7 @@ export function DailySummaryCard({
                 </Badge>
                 <span className="text-[11px] text-[#66736B]">
                   {summary.used_fallback
-                    ? "โหมดสาธิต (Demo Mode — ไม่ได้เรียก Gemini API)"
+                    ? "ใช้ระบบสำรอง · AI ไม่พร้อม"
                     : `สรุปโดย ${summary.ai_provider}`}
                 </span>
               </div>

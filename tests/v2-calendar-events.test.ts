@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import { DemoFileStore } from "@/lib/store/demo-store";
-import { expandCalendarEventsForRange } from "@/lib/calendar-events";
+import { normalizeCalendarEventInput, calendarRange, expandCalendarEventsForRange } from "@/lib/calendar-events";
 import { buildDailySummary, buildRestSuggestions, findScheduleGaps } from "@/lib/ai/service";
 import { ForbiddenError } from "@/lib/errors";
 import type { CalendarEventRecord, DailyTaskOccurrence } from "@/types/careplan";
@@ -301,5 +301,36 @@ describe("CarePlan V2 — Calendar Events, Recurrence, Demo Seed & AI", () => {
     for (const s of restRes.suggestions) {
       expect(s.supervision_safety_note.length).toBeGreaterThan(15);
     }
+  });
+});
+
+
+describe("Calendar integration regressions",()=>{
+  it("preserves doctor type through single/future changes and future deletion",async()=>{
+    const {store}=createTempStore();const {user}=await store.ensureDemoUser({reset:true,seedSampleTasks:false});
+    const created=await store.createCalendarEvent(user.id,{title:"Doctor",event_type:"doctor",start_date:"2026-11-02",start_time:"09:00",end_time:"10:00",recurrence:"weekly"});
+    const changed=await store.updateCalendarEvent(user.id,created.id,{edit_scope:"single",occurrence_date:"2026-11-09",title:"Doctor once"});
+    expect(changed.split_event?.event_type).toBe("doctor");
+    const future=await store.updateCalendarEvent(user.id,created.id,{edit_scope:"future",occurrence_date:"2026-11-16",title:"Doctor future"});
+    expect(future.split_event?.event_type).toBe("doctor");
+    await store.deleteCalendarEvent(user.id,future.split_event!.id,{delete_scope:"future",occurrence_date:"2026-11-23"});
+    const result=await store.listCalendarEvents(user.id,"2026-11-01","2026-12-01");
+    expect(result.occurrences.filter(o=>o.occurrence_date>="2026-11-23")).toHaveLength(0);
+    expect(result.occurrences.every(o=>o.event_type==="doctor")).toBe(true);
+    const updated=await store.updateCalendarEvent(user.id,changed.split_event!.id,{title:"Revised"});expect(updated.event.event_type).toBe("doctor");
+  });
+  it("rejects bogus occurrence mutation and leaves series unchanged",async()=>{
+    const {store}=createTempStore();const {user}=await store.ensureDemoUser({reset:true,seedSampleTasks:false});
+    const e=await store.createCalendarEvent(user.id,{title:"Weekly",start_date:"2026-11-02",recurrence:"weekly"});
+    await expect(store.updateCalendarEvent(user.id,e.id,{edit_scope:"single",occurrence_date:"2026-11-03"})).rejects.toThrow();
+    await expect(store.deleteCalendarEvent(user.id,e.id,{delete_scope:"single"})).rejects.toThrow();
+    await expect(store.deleteCalendarEvent(user.id,e.id,{delete_scope:"future",occurrence_date:"2026-11-03"})).rejects.toThrow();
+    const result=await store.listCalendarEvents(user.id,"2026-11-01","2026-11-30");expect(result.events[0].excluded_dates).toEqual([]);expect(result.events[0].until_date).toBeNull();
+  });
+  it("validates event types, positive duration and bounded real dates",()=>{
+    const base={title:"Meeting",start_date:"2026-11-24"};expect(normalizeCalendarEventInput(base).event_type).toBe("general");
+    expect(()=>normalizeCalendarEventInput({...base,event_type:"invalid" as "doctor"})).toThrow();
+    expect(()=>normalizeCalendarEventInput({...base,start_time:"10:00",end_time:"10:00"})).toThrow();
+    expect(()=>calendarRange("2026-02-31","2026-03-01")).toThrow();expect(()=>calendarRange("2026-01-01","2028-01-01")).toThrow();
   });
 });

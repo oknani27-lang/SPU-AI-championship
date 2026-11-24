@@ -1,0 +1,15 @@
+{
+  "name": "CarePlan",
+  "short_name": "CarePlan",
+  "id": "/",
+  "start_url": "/calendar",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FAFBF9",
+  "theme_color": "#256B4A",
+  "lang": "th",
+  "icons": [
+    {"src": "/careplan-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/careplan-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}

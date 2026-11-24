@@ -17,6 +17,7 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { approveSchedule, extractTextToTask } from "@/lib/api-client";
 import { createTempId } from "@/lib/utils";
+import { scheduleProblem } from "@/lib/ai/schedule-validation";
 import {
   ALL_DAYS,
   THAI_DAY_NAMES,
@@ -38,6 +39,11 @@ const SAMPLE_PROMPTS = [
   "วันจันทร์ 8 โมงเตรียมอาหารให้แม่ 9 โมงจัดยา แล้วบ่ายสองพาไปหาหมอ",
   "วันพุธ 07:30 วัดความดัน 08:30 กินข้าวเช้าและกินยาหลังอาหาร 16:00 พาเดินออกกำลังกาย 30 นาที",
 ];
+const FALLBACK_LABELS: Record<string, string> = {
+  gemini_timeout: "AI ตอบช้า", gemini_http_429: "ถึงขีดจำกัดการเรียก AI",
+  gemini_http_503: "บริการ AI ไม่ว่าง", gemini_schema_validation_failed: "ผล AI ไม่ครบรูปแบบ",
+  gemini_api_key_not_configured: "ยังไม่ได้ตั้งค่าคีย์", gemini_network_error: "เชื่อมต่อ AI ไม่สำเร็จ",
+};
 
 export function TextToTaskComposer({
   defaultDayOfWeek,
@@ -56,16 +62,28 @@ export function TextToTaskComposer({
   const [providerInfo, setProviderInfo] = React.useState<{
     provider: string;
     usedFallback: boolean;
+    reason?: string;
   } | null>(null);
+  const generation = React.useRef(0);
+  const extractingLock = React.useRef(false);
+  const savingLock = React.useRef(false);
+  React.useEffect(() => { generation.current++; setItems([]); setQuestions([]); setProviderInfo(null); }, [defaultDayOfWeek]);
+  const changeText = (value: string) => {
+    generation.current++;
+    setRawText(value); setItems([]); setQuestions([]); setProviderInfo(null); setError(null); setSuccessMsg(null);
+  };
 
   const handleExtract = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (extractingLock.current) return;
     const trimmed = rawText.trim();
     if (!trimmed) {
       setError("กรุณาพิมพ์ข้อความรายการงานที่ต้องการให้ระบบช่วยแยก");
       return;
     }
 
+    extractingLock.current = true;
+    const current = ++generation.current;
     setExtracting(true);
     setError(null);
     setSuccessMsg(null);
@@ -74,11 +92,13 @@ export function TextToTaskComposer({
         text: trimmed,
         default_day_of_week: defaultDayOfWeek,
       });
+      if (current !== generation.current) return;
       setItems(res.extracted_tasks || []);
       setQuestions(res.missing_info_questions || []);
       setProviderInfo({
         provider: res.provider,
         usedFallback: res.used_fallback,
+        reason: res.fallback_reason,
       });
       if (!res.extracted_tasks || res.extracted_tasks.length === 0) {
         setError(
@@ -86,12 +106,14 @@ export function TextToTaskComposer({
         );
       }
     } catch (err) {
+      if (current !== generation.current) return;
       setError(
         err instanceof Error
           ? err.message
           : "ไม่สามารถแปลงข้อความเป็นรายการงานได้"
       );
     } finally {
+      extractingLock.current = false;
       setExtracting(false);
     }
   };
@@ -109,7 +131,7 @@ export function TextToTaskComposer({
   };
 
   const removeItem = (tempId: string) => {
-    setItems((prev) => prev.filter((item) => item.temp_id !== tempId));
+    setItems((prev) => prev.filter((item) => item.temp_id !== tempId).map(item => item.depends_on_temp_id === tempId ? { ...item, depends_on_temp_id: null } : item));
   };
 
   const addBlankItem = () => {
@@ -136,6 +158,9 @@ export function TextToTaskComposer({
       return;
     }
     const targetDay = valid[0].day_of_week;
+    if (valid.some(item => item.day_of_week !== targetDay)) {
+      setError("จัดเรียงได้ครั้งละวัน กรุณาเลือกวันเดียวกันทุกรายการ หรือบันทึกแยกวัน"); return;
+    }
     const drafts: DraftTaskInput[] = valid.map((item) => ({
       temp_id: item.temp_id,
       title: item.title.trim(),
@@ -145,21 +170,25 @@ export function TextToTaskComposer({
       priority: item.priority,
       is_fixed_time: item.is_fixed_time,
       is_medically_prescribed: item.is_medically_prescribed,
+      depends_on_temp_id: item.depends_on_temp_id,
     }));
     onSendToAiSchedule?.(targetDay, drafts);
   };
 
   const handleSaveDirectly = async () => {
+    if (savingLock.current || extracting) return;
     const valid = items.filter((i) => i.title.trim().length > 0);
     if (valid.length === 0) {
       setError("กรุณาระบุชื่องานอย่างน้อย 1 รายการก่อนบันทึก");
       return;
     }
 
+    savingLock.current = true;
     setSavingDirect(true);
     setError(null);
     setSuccessMsg(null);
     try {
+      if (valid.some(item => !item.preferred_time)) throw new Error("ระบุเวลาให้ครบก่อนบันทึก หรือส่งให้ AI จัดเรียงตารางก่อน");
       // Group by day_of_week so each weekday saves cleanly
       const byDay = new Map<DayOfWeek, ProposedScheduleTask[]>();
       for (const item of valid) {
@@ -173,13 +202,17 @@ export function TextToTaskComposer({
           priority: item.priority,
           is_fixed_time: item.is_fixed_time,
           is_medically_prescribed: item.is_medically_prescribed,
-          depends_on_temp_id: null,
+          depends_on_temp_id: item.depends_on_temp_id ?? null,
           rationale: "ยืนยันและบันทึกจากข้อความที่ผู้ดูแลพิมพ์",
         });
         byDay.set(item.day_of_week, list);
       }
 
       let lastDay: DayOfWeek = defaultDayOfWeek;
+      for (const tasks of byDay.values()) {
+        const problem = scheduleProblem(tasks);
+        if (problem) throw new Error(problem);
+      }
       for (const [dow, tasks] of byDay.entries()) {
         await approveSchedule({ day_of_week: dow, tasks });
         lastDay = dow;
@@ -195,6 +228,7 @@ export function TextToTaskComposer({
         err instanceof Error ? err.message : "ไม่สามารถบันทึกรายการงานได้"
       );
     } finally {
+      savingLock.current = false;
       setSavingDirect(false);
     }
   };
@@ -205,13 +239,13 @@ export function TextToTaskComposer({
         <div>
           <h3 className="text-[16px] font-semibold text-[#17241D] flex items-center gap-2">
             <FileText className="h-4 w-4 text-[#256B4A]" />
-            พิมพ์ข้อความเพื่อเพิ่มงานอย่างรวดเร็ว (Text-to-Task)
+            เพิ่มงานด้วย AI
           </h3>
           <p className="text-xs sm:text-sm text-[#66736B] mt-0.5">
-            พิมพ์หลายงานพร้อมกันเป็นภาษาไทย ระบบจะช่วยแยกเป็นรายการงานให้ตรวจสอบและแก้ไขก่อนบันทึก
+            พิมพ์สิ่งที่ต้องทำ แล้วตรวจรายการก่อนบันทึก
           </p>
         </div>
-        <Badge variant="neutral">พิมพ์ข้อความเท่านั้น</Badge>
+
       </div>
 
       <form onSubmit={handleExtract} className="space-y-3">
@@ -223,7 +257,8 @@ export function TextToTaskComposer({
             id="text-to-task-input"
             rows={compact ? 2 : 3}
             value={rawText}
-            onChange={(e) => setRawText(e.target.value)}
+            onChange={(e) => changeText(e.target.value)}
+            maxLength={2000}
             placeholder="เช่น วันจันทร์ 8 โมงเตรียมอาหารให้แม่ 9 โมงจัดยา แล้วบ่ายสองพาไปหาหมอ"
           />
         </div>
@@ -235,7 +270,7 @@ export function TextToTaskComposer({
             <button
               key={idx}
               type="button"
-              onClick={() => setRawText(sample)}
+              onClick={() => changeText(sample)}
               className="rounded-md border border-[#E3E9E3] bg-[#FAFBF9] px-2.5 py-1 text-xs text-[#17241D] hover:bg-[#EAF3EC] transition-colors text-left"
             >
               ตัวอย่างที่ {idx + 1}
@@ -246,7 +281,7 @@ export function TextToTaskComposer({
         <div className="flex items-center justify-end">
           <Button type="submit" variant="primary" loading={extracting}>
             <Sparkles className="h-4 w-4" />
-            แยกเป็นรายการงานด้วย AI
+            แยกงานด้วย AI
           </Button>
         </div>
       </form>
@@ -260,29 +295,29 @@ export function TextToTaskComposer({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-[#17241D]">
-                ตรวจสอบและแก้ไขรายการที่แยกได้ ({items.length} รายการ)
+                ตรวจรายการ ({items.length} รายการ)
               </p>
               <p className="text-xs text-[#66736B]">
-                คุณสามารถปรับแก้ชื่อ วัน เวลา ระยะเวลา หรือทำเครื่องหมายงานทางการแพทย์ได้ก่อนบันทึก
+                แก้ไขก่อนบันทึกได้
               </p>
             </div>
             {providerInfo && (
               <Badge variant={providerInfo.usedFallback ? "warning" : "sage"}>
                 {providerInfo.usedFallback
-                  ? "โหมดสาธิต (Demo Mode — ไม่ได้เรียก Gemini API)"
+                  ? `ระบบสำรอง · ${FALLBACK_LABELS[providerInfo.reason ?? ""] ?? "ตรวจรายการก่อนใช้"}`
                   : `แยกข้อความโดย ${providerInfo.provider}`}
               </Badge>
             )}
           </div>
 
           {questions.length > 0 && (
-            <Alert variant="warning" title="ข้อมูลที่อาจต้องตรวจสอบเพิ่มเติม">
+            <details className="text-sm text-[#66736B]"><summary className="cursor-pointer">ตรวจเพิ่มเติม {questions.length} ข้อ</summary><Alert variant="warning">
               <ul className="list-disc pl-4 space-y-0.5 text-xs">
                 {questions.map((q, i) => (
                   <li key={i}>{q}</li>
                 ))}
               </ul>
-            </Alert>
+            </Alert></details>
           )}
 
           <div className="space-y-2.5">
@@ -331,7 +366,7 @@ export function TextToTaskComposer({
                     </label>
                     <Input
                       type="time"
-                      value={item.preferred_time || "09:00"}
+                      value={item.preferred_time || ""}
                       onChange={(e) =>
                         updateItem(item.temp_id, "preferred_time", e.target.value)
                       }

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   CalendarDays,
   CalendarRange,
@@ -19,13 +20,11 @@ import {
 import { AppShell } from "@/components/layout/AppShell";
 import { useSession } from "@/components/care/SessionContext";
 import { SevenDaySelector } from "@/components/care/SevenDaySelector";
-import {
-  AppleCalendarView,
-  type AppleCalendarDayColumn,
-} from "@/components/care/AppleCalendarView";
+import type { AppleCalendarDayColumn } from "@/components/care/AppleCalendarView";
+const AppleCalendarView = dynamic(() => import("@/components/care/AppleCalendarView").then(module => module.AppleCalendarView));
 import { TextToTaskComposer } from "@/components/care/TextToTaskComposer";
-import { AiScheduleReviewModal } from "@/components/care/AiScheduleReviewModal";
-import { ShareScheduleDialog } from "@/components/share/ShareScheduleDialog";
+const AiScheduleReviewModal = dynamic(() => import("@/components/care/AiScheduleReviewModal").then(module => module.AiScheduleReviewModal));
+const ShareScheduleDialog = dynamic(() => import("@/components/share/ShareScheduleDialog").then(module => module.ShareScheduleDialog));
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -33,7 +32,6 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Alert } from "@/components/ui/alert";
 import {
-  getOccurrencesByDate,
   getOccurrencesByWeek,
   getSchedule,
   updateRestDay,
@@ -78,12 +76,12 @@ function WeeklyScheduleContent() {
   const [weeklySchedule, setWeeklySchedule] =
     React.useState<WeeklyScheduleTemplate | null>(null);
   const [templates, setTemplates] = React.useState<RecurringTaskTemplate[]>([]);
-  const [dayOccurrences, setDayOccurrences] = React.useState<
-    DailyTaskOccurrence[]
-  >([]);
   const [weekDaysData, setWeekDaysData] = React.useState<
     AppleCalendarDayColumn[]
   >([]);
+  const selectedWeek = getWeekMonday(selectedDate);
+  const dayOccurrences = React.useMemo(() => weekDaysData.find(day => day.date === selectedDate)?.occurrences ?? [], [weekDaysData, selectedDate]);
+  const loadGeneration = React.useRef(0);
   const [viewMode, setViewMode] = React.useState<"list" | "calendar">("list");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -130,31 +128,34 @@ function WeeklyScheduleContent() {
   const [editError, setEditError] = React.useState<string | null>(null);
 
   const loadData = React.useCallback(async (date: string) => {
+    const generation = ++loadGeneration.current;
     setLoading(true);
     setError(null);
     try {
       const weekMonday = getWeekMonday(date);
-      const [schedRes, occRes, weekRes] = await Promise.all([
+      const [schedRes, weekRes] = await Promise.all([
         getSchedule(),
-        getOccurrencesByDate(date),
         getOccurrencesByWeek(weekMonday),
       ]);
+      if (generation !== loadGeneration.current) return;
       setWeeklySchedule(schedRes.weekly_schedule);
       setTemplates(schedRes.templates || []);
-      setDayOccurrences(occRes.occurrences || []);
       setWeekDaysData(weekRes.days || []);
     } catch (err) {
+      if (generation !== loadGeneration.current) return;
       setError(
         err instanceof Error ? err.message : "ไม่สามารถโหลดตารางสัปดาห์ได้"
       );
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   }, []);
 
   React.useEffect(() => {
-    void loadData(selectedDate);
-  }, [selectedDate, demoVersion, loadData]);
+    void loadData(selectedWeek);
+    const activeGeneration = loadGeneration;
+    return () => { activeGeneration.current++; };
+  }, [selectedWeek, demoVersion, loadData]);
 
   const restDays = weeklySchedule?.rest_days ?? session?.weekly_schedule?.rest_days ?? [];
   const isCurrentDayRest = restDays.includes(selectedDayOfWeek);
@@ -303,10 +304,10 @@ function WeeklyScheduleContent() {
         <div>
           <h1 className="text-2xl font-bold text-[#17241D] flex items-center gap-2">
             <CalendarRange className="h-6 w-6 text-[#256B4A]" />
-            ตารางดูแลรายสัปดาห์ (ซ้ำทุก 7 วัน)
+            ตาราง 7 วัน
           </h1>
           <p className="text-sm text-[#66736B] mt-0.5">
-            จัดการงานดูแลสำหรับวันจันทร์–วันอาทิตย์ ระบบจะสร้างรายการประจำวันให้อัตโนมัติทุกสัปดาห์
+            งานประจำที่ทำซ้ำทุกสัปดาห์
           </p>
         </div>
 
@@ -417,7 +418,7 @@ function WeeklyScheduleContent() {
               เพิ่มงานด้วยตนเองและให้ AI จัดตารางเวลา ({THAI_DAY_NAMES[selectedDayOfWeek].full})
             </h2>
             <p className="text-xs sm:text-sm text-[#66736B]">
-              เพิ่มรายการร่างด้านล่าง แล้วกด “ให้ AI ช่วยจัดตารางเวลา” เพื่อตรวจสอบและอนุมัติก่อนบันทึก
+              เพิ่มงาน แล้วให้ AI ช่วยจัดเวลา
             </p>
           </div>
           <Button
@@ -826,7 +827,7 @@ function WeeklyScheduleContent() {
       </section>
 
       {/* AI Schedule Review Modal */}
-      <AiScheduleReviewModal
+      {aiModalOpen && <AiScheduleReviewModal
         open={aiModalOpen}
         onClose={() => setAiModalOpen(false)}
         dayOfWeek={aiModalDay}
@@ -838,10 +839,10 @@ function WeeklyScheduleContent() {
           );
           void loadData(selectedDate);
         }}
-      />
+      />}
 
       {/* Share Schedule Dialog */}
-      <ShareScheduleDialog
+      {shareOpen && <ShareScheduleDialog
         open={shareOpen}
         onClose={() => setShareOpen(false)}
         defaultDate={selectedDate}
@@ -849,7 +850,7 @@ function WeeklyScheduleContent() {
         careRecipientName={
           session?.care_recipient?.display_name || "ผู้รับการดูแล"
         }
-      />
+      />}
     </div>
   );
 }

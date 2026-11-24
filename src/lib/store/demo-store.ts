@@ -25,6 +25,8 @@ import type {
   WeeklyScheduleTemplate,
 } from "@/types/careplan";
 import {
+  assertCalendarOccurrence,
+  calendarRange,
   diffCalendarDays,
   expandCalendarEventsForRange,
   normalizeCalendarEventInput,
@@ -2333,9 +2335,7 @@ export class DemoFileStore implements CarePlanStore {
         `${a.start_date}T${a.start_time}`.localeCompare(`${b.start_date}T${b.start_time}`)
       );
 
-    const today = getThaiTodayDate();
-    const start = rangeStart && isValidDateString(rangeStart) ? rangeStart : addDays(today, -31);
-    const end = rangeEnd && isValidDateString(rangeEnd) ? rangeEnd : addDays(today, 62);
+    const [start,end] = calendarRange(rangeStart,rangeEnd);
     const occurrences = expandCalendarEventsForRange(events, start, end);
 
     return { events, occurrences };
@@ -2392,15 +2392,14 @@ export class DemoFileStore implements CarePlanStore {
       existing.recurrence !== "never"
     ) {
       const occDate = input.occurrence_date;
-      if (!occDate || !isValidDateString(occDate)) {
-        throw new ValidationError("กรุณาระบุวันที่ของรอบกิจกรรมที่ต้องการแก้ไข (occurrence_date)");
-      }
+      assertCalendarOccurrence(existing, occDate);
 
       if (editScope === "single") {
         const nextStart = input.start_date ?? occDate;
         const nextEnd =
           input.end_date ?? (spanDays > 0 ? addDays(nextStart, spanDays) : nextStart);
         const normalizedSingle = normalizeCalendarEventInput({
+          event_type: input.event_type ?? existing.event_type ?? "general",
           title: input.title ?? existing.title,
           description: input.description ?? existing.description,
           start_date: nextStart,
@@ -2440,6 +2439,7 @@ export class DemoFileStore implements CarePlanStore {
         const nextEnd =
           input.end_date ?? (spanDays > 0 ? addDays(nextStart, spanDays) : nextStart);
         const normalizedFuture = normalizeCalendarEventInput({
+          event_type: input.event_type ?? existing.event_type ?? "general",
           title: input.title ?? existing.title,
           description: input.description ?? existing.description,
           start_date: nextStart,
@@ -2479,6 +2479,7 @@ export class DemoFileStore implements CarePlanStore {
       input.end_date ??
       (input.start_date ? addDays(nextStart, spanDays) : existing.end_date);
     const normalizedAll = normalizeCalendarEventInput({
+      event_type: input.event_type ?? existing.event_type ?? "general",
       title: input.title ?? existing.title,
       description: input.description ?? existing.description,
       start_date: nextStart,
@@ -2504,7 +2505,7 @@ export class DemoFileStore implements CarePlanStore {
     userId: string,
     eventId: string,
     options?: {
-      delete_scope?: "all" | "single";
+      delete_scope?: "all" | "single" | "future";
       occurrence_date?: string;
     }
   ): Promise<{ deleted: true }> {
@@ -2519,6 +2520,14 @@ export class DemoFileStore implements CarePlanStore {
       throw new ForbiddenError("คุณไม่มีสิทธิ์ลบกิจกรรมของผู้อื่น");
     }
 
+    if (options?.delete_scope && options.delete_scope !== "all" && existing.recurrence !== "never") {
+      assertCalendarOccurrence(existing, options.occurrence_date);
+      if (options.delete_scope === "future") {
+        if (options.occurrence_date === existing.start_date) db.calendar_events = db.calendar_events.filter(e => e.id !== eventId);
+        else { existing.until_date = addDays(options.occurrence_date,-1); existing.updated_at = new Date().toISOString(); }
+        this.writeDb(db); return { deleted: true };
+      }
+    }
     if (
       options?.delete_scope === "single" &&
       existing.recurrence !== "never" &&

@@ -3,6 +3,7 @@ import { dayOfWeekSchema } from "@/lib/ai/schemas";
 import { parseTextToTasks } from "@/lib/ai/service";
 import { requireAuthContext } from "@/lib/auth";
 import { handleApiError, jsonOk } from "@/lib/http";
+import { ValidationError } from "@/lib/errors";
 
 const textToTaskRequestSchema = z.object({
   text: z
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
     const rawBody: unknown = await request.json();
     const input = textToTaskRequestSchema.parse(rawBody);
 
-    const { response, telemetry } = await parseTextToTasks({
+    const { response, telemetry, failure_reason } = await parseTextToTasks({
       text: input.text,
       default_day_of_week: input.default_day_of_week,
     });
@@ -29,8 +30,9 @@ export async function POST(request: Request) {
       ...telemetry,
     });
 
-    return jsonOk(response);
+    return jsonOk({ ...response, ...(failure_reason ? { fallback_reason: failure_reason } : {}) });
   } catch (err) {
+    if (err instanceof SyntaxError) return handleApiError(new ValidationError("ข้อมูล JSON ไม่ถูกต้อง"));
     return handleApiError(err);
   }
 }

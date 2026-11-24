@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Calendar, Repeat, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +33,7 @@ export interface CalendarEventModalProps {
   open: boolean;
   onClose: () => void;
   defaultDate: string;
+  defaultEventType?: "general" | "doctor";
   editingOccurrence?: CalendarEventOccurrence | null;
   editingRecord?: CalendarEventRecord | null;
   onSaved: () => void;
@@ -40,16 +43,19 @@ export function CalendarEventModal({
   open,
   onClose,
   defaultDate,
+  defaultEventType = "general",
   editingOccurrence,
   editingRecord,
   onSaved,
 }: CalendarEventModalProps) {
+  const router = useRouter();
   const isEditing = Boolean(editingRecord);
   const isRecurring = Boolean(
     editingRecord && editingRecord.recurrence !== "never"
   );
 
   const [title, setTitle] = React.useState("");
+  const [eventType, setEventType] = React.useState<"general" | "doctor">("general");
   const [description, setDescription] = React.useState("");
   const [startDate, setStartDate] = React.useState(defaultDate);
   const [endDate, setEndDate] = React.useState(defaultDate);
@@ -72,6 +78,7 @@ export function CalendarEventModal({
     setError(null);
 
     if (editingRecord) {
+      setEventType(editingRecord.event_type ?? "general");
       setTitle(editingRecord.title);
       setDescription(editingRecord.description || "");
       setStartDate(
@@ -93,6 +100,7 @@ export function CalendarEventModal({
           : "all"
       );
     } else {
+      setEventType(defaultEventType);
       setTitle("");
       setDescription("");
       setStartDate(defaultDate);
@@ -104,7 +112,7 @@ export function CalendarEventModal({
       setReminderMinutes("15");
       setEditScope("all");
     }
-  }, [open, defaultDate, editingRecord, editingOccurrence]);
+  }, [open, defaultDate, defaultEventType, editingRecord, editingOccurrence]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,8 +125,8 @@ export function CalendarEventModal({
       setError("วันที่สิ้นสุดต้องไม่น้อยกว่าวันที่เริ่มต้น");
       return;
     }
-    if (!isAllDay && startDate === endDate && endTime < startTime) {
-      setError("เวลาสิ้นสุดต้องไม่น้อยกว่าเวลาเริ่มต้น");
+    if (!isAllDay && startDate === endDate && endTime <= startTime) {
+      setError("เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่มต้น");
       return;
     }
 
@@ -128,8 +136,10 @@ export function CalendarEventModal({
       reminderMinutes === "none" ? null : Number(reminderMinutes);
 
     try {
+      let saved: CalendarEventRecord;
       if (editingRecord) {
-        await updateCalendarEvent(editingRecord.id, {
+        const result = await updateCalendarEvent(editingRecord.id, {
+          event_type: eventType,
           title: trimmed,
           description: description.trim(),
           start_date: startDate,
@@ -143,8 +153,10 @@ export function CalendarEventModal({
           occurrence_date:
             editingOccurrence?.occurrence_date ?? editingRecord.start_date,
         });
+        saved = result.split_event ?? result.event;
       } else {
-        await createCalendarEvent({
+        const result = await createCalendarEvent({
+          event_type: eventType,
           title: trimmed,
           description: description.trim(),
           start_date: startDate,
@@ -155,9 +167,11 @@ export function CalendarEventModal({
           recurrence,
           reminder_minutes: parsedReminder,
         });
+        saved = result.event;
       }
       onSaved();
       onClose();
+      if (eventType === "doctor") router.push(`/doctor?${new URLSearchParams({ event: saved.id, date: startDate })}`);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "ไม่สามารถบันทึกกิจกรรมได้"
@@ -167,8 +181,8 @@ export function CalendarEventModal({
     }
   };
 
-  const handleDelete = async (scope: "single" | "all") => {
-    if (!editingRecord) return;
+  const handleDelete = async (scope: "single" | "future" | "all") => {
+    if (!editingRecord || !window.confirm(scope === "all" ? "ลบกิจกรรมนี้ทั้งชุด?" : scope === "future" ? "ลบรอบนี้และรอบในอนาคตทั้งหมด?" : "ลบเฉพาะกิจกรรมรอบนี้?")) return;
     setDeleting(true);
     setError(null);
     try {
@@ -188,283 +202,34 @@ export function CalendarEventModal({
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title={isEditing ? "แก้ไขกิจกรรมในปฏิทิน" : "สร้างกิจกรรมใหม่ในปฏิทิน"}
-      description="เพิ่มนัดหมายพบแพทย์ กิจกรรมครอบครัว หรือบันทึกวันสำคัญร่วมกับตารางดูแลประจำวัน"
-      maxWidthClass="max-w-lg"
-      footer={
-        <div className="flex w-full flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {isEditing && (
-              <>
-                {isRecurring && editingOccurrence && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    loading={deleting}
-                    onClick={() => void handleDelete("single")}
-                    className="text-[#A8383B] border-[#E8C5C6] hover:bg-[#FDF2F2]"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    ลบเฉพาะรอบนี้
-                  </Button>
-                )}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  loading={deleting}
-                  onClick={() => void handleDelete("all")}
-                  className="text-[#A8383B] border-[#E8C5C6] hover:bg-[#FDF2F2]"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  {isRecurring ? "ลบทั้งชุด" : "ลบกิจกรรม"}
-                </Button>
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={saving || deleting}
-            >
-              ยกเลิก
-            </Button>
-            <Button
-              type="submit"
-              form="calendar-event-form"
-              variant="primary"
-              loading={saving}
-              disabled={deleting}
-            >
-              <Calendar className="h-4 w-4" />
-              {isEditing ? "บันทึกการแก้ไข" : "บันทึกกิจกรรม"}
-            </Button>
-          </div>
-        </div>
-      }
-    >
-      <form
-        id="calendar-event-form"
-        onSubmit={handleSubmit}
-        className="space-y-4"
-      >
+    <Dialog open={open} onClose={() => { if (!saving && !deleting) onClose(); }} title={isEditing ? "แก้ไขกิจกรรม" : "เพิ่มกิจกรรม"} maxWidthClass="max-w-lg"
+      footer={<div className="flex w-full items-center justify-between gap-3">
+        {isEditing ? <details className="relative text-sm"><summary className="cursor-pointer text-[#A8383B]">ลบกิจกรรม</summary><div className="absolute bottom-8 left-0 w-48 rounded-lg border border-[#E3E9E3] bg-white p-2 shadow-lg space-y-1">
+          {isRecurring && editingOccurrence && <><Button type="button" variant="ghost" size="sm" disabled={saving || deleting} onClick={() => void handleDelete("single")}>เฉพาะครั้งนี้</Button><Button type="button" variant="ghost" size="sm" disabled={saving || deleting} onClick={() => void handleDelete("future")}>ครั้งนี้และอนาคต</Button></>}
+          <Button type="button" variant="ghost" size="sm" disabled={saving || deleting} onClick={() => void handleDelete("all")}><Trash2 className="h-3.5 w-3.5" />{isRecurring ? "ลบทั้งหมด" : "ลบกิจกรรม"}</Button>
+        </div></details> : <span />}
+        <div className="flex gap-2"><Button type="button" variant="outline" onClick={onClose} disabled={saving || deleting}>ยกเลิก</Button><Button type="submit" form="calendar-event-form" loading={saving} disabled={deleting}>บันทึก</Button></div>
+      </div>}>
+      <form id="calendar-event-form" onSubmit={handleSubmit} className="space-y-4">
         {error && <Alert variant="error">{error}</Alert>}
-
-        <div>
-          <label
-            htmlFor="cal-ev-title"
-            className="block text-sm font-medium text-[#17241D] mb-1"
-          >
-            ชื่อกิจกรรม *
-          </label>
-          <Input
-            id="cal-ev-title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="เช่น นัดพบแพทย์ตรวจติดตาม หรือเยี่ยมญาติ"
-            required
-          />
+        <div><label htmlFor="cal-ev-title" className="block text-sm font-medium mb-1">ชื่อกิจกรรม</label><Input id="cal-ev-title" value={title} onChange={e => setTitle(e.target.value)} placeholder="นัดหมายหรือสิ่งที่ต้องทำ" required maxLength={200} /></div>
+        <div><label htmlFor="cal-ev-type" className="block text-sm font-medium mb-1">ประเภท</label><Select id="cal-ev-type" value={eventType} onChange={e => setEventType(e.target.value as "general" | "doctor")}><option value="general">กิจกรรมทั่วไป</option><option value="doctor">นัดพบแพทย์</option></Select></div>
+        {eventType === "doctor" && <Link className="inline-block text-sm text-[#256B4A] hover:underline" href={editingRecord ? '/doctor?' + new URLSearchParams({ event: editingRecord.id, date: editingOccurrence?.occurrence_date ?? editingRecord.start_date }) : "/doctor?tab=hospitals"}>โรงพยาบาลและช่องทางติดต่อ ↗</Link>}
+        <div className="flex items-center justify-between"><span className="text-sm">ทั้งวัน</span><Switch checked={isAllDay} onCheckedChange={setIsAllDay} aria-label="กิจกรรมตลอดวัน" /></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label htmlFor="cal-ev-start-date" className="block text-xs text-[#66736B] mb-1">วันเริ่ม</label><Input id="cal-ev-start-date" type="date" value={startDate} onChange={e => { const v = e.target.value; setStartDate(v); if (endDate < v) setEndDate(v); }} required /></div>
+          <div><label htmlFor="cal-ev-end-date" className="block text-xs text-[#66736B] mb-1">วันสิ้นสุด</label><Input id="cal-ev-end-date" type="date" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} required /></div>
+          {!isAllDay && <><div><label htmlFor="cal-ev-start-time" className="block text-xs text-[#66736B] mb-1">เวลาเริ่ม</label><Input id="cal-ev-start-time" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} required /></div><div><label htmlFor="cal-ev-end-time" className="block text-xs text-[#66736B] mb-1">เวลาสิ้นสุด</label><Input id="cal-ev-end-time" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} required /></div></>}
         </div>
-
-        <div>
-          <label
-            htmlFor="cal-ev-desc"
-            className="block text-sm font-medium text-[#17241D] mb-1"
-          >
-            รายละเอียดเพิ่มเติม
-          </label>
-          <Textarea
-            id="cal-ev-desc"
-            rows={2}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="สถานที่ เอกสารที่ต้องเตรียม หรือหมายเหตุสำหรับผู้ดูแล"
-          />
-        </div>
-
-        <div className="flex items-center justify-between rounded-md border border-[#E3E9E3] bg-[#FAFBF9] px-3 py-2.5">
-          <div>
-            <p className="text-sm font-medium text-[#17241D]">กิจกรรมตลอดวัน</p>
-            <p className="text-xs text-[#66736B]">
-              เปิดใช้งานหากไม่ระบุเวลาเริ่มและสิ้นสุดเฉพาะเจาะจง
-            </p>
+        {isRecurring && editingOccurrence && <div><label htmlFor="cal-ev-scope" className="block text-sm font-medium mb-1">แก้ไข</label><Select id="cal-ev-scope" value={editScope} onChange={e => setEditScope(e.target.value as "single" | "future" | "all")}><option value="single">เฉพาะครั้งนี้</option><option value="future">ครั้งนี้และอนาคต</option><option value="all">ทั้งชุด</option></Select></div>}
+        <details key={open ? editingRecord?.id || "new" : "closed"} open={isRecurring || undefined} className="border-t border-[#E3E9E3] pt-3">
+          <summary className="cursor-pointer text-sm text-[#256B4A]">ตัวเลือกเพิ่มเติม</summary>
+          <div className="space-y-4 pt-4">
+            <div><label htmlFor="cal-ev-desc" className="block text-sm mb-1">รายละเอียด</label><Textarea id="cal-ev-desc" rows={2} value={description} onChange={e => setDescription(e.target.value)} placeholder="สถานที่หรือหมายเหตุ" maxLength={1000} /></div>
+            <div className="grid grid-cols-2 gap-3"><div><label htmlFor="cal-ev-recurrence" className="block text-xs text-[#66736B] mb-1">ทำซ้ำ</label><Select id="cal-ev-recurrence" value={recurrence} onChange={e => setRecurrence(e.target.value as CalendarEventRecurrence)} disabled={isRecurring && editScope === "single"}>{Object.entries(RECURRENCE_LABELS).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</Select></div>
+            <div><label htmlFor="cal-ev-reminder" className="block text-xs text-[#66736B] mb-1">เตือนล่วงหน้า</label><Select id="cal-ev-reminder" value={reminderMinutes} onChange={e => setReminderMinutes(e.target.value)}><option value="none">ไม่เตือน</option><option value="0">เมื่อถึงเวลา</option><option value="5">5 นาที</option><option value="15">15 นาที</option><option value="30">30 นาที</option><option value="60">1 ชั่วโมง</option><option value="1440">1 วัน</option></Select></div></div>
           </div>
-          <Switch
-            checked={isAllDay}
-            onCheckedChange={setIsAllDay}
-            aria-label="กิจกรรมตลอดวัน"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label
-              htmlFor="cal-ev-start-date"
-              className="block text-xs font-medium text-[#66736B] mb-1"
-            >
-              วันที่เริ่มต้น
-            </label>
-            <Input
-              id="cal-ev-start-date"
-              type="date"
-              value={startDate}
-              onChange={(e) => {
-                const v = e.target.value;
-                setStartDate(v);
-                if (endDate < v) setEndDate(v);
-              }}
-              required
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="cal-ev-end-date"
-              className="block text-xs font-medium text-[#66736B] mb-1"
-            >
-              วันที่สิ้นสุด
-            </label>
-            <Input
-              id="cal-ev-end-date"
-              type="date"
-              value={endDate}
-              min={startDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              required
-            />
-          </div>
-        </div>
-
-        {!isAllDay && (
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label
-                htmlFor="cal-ev-start-time"
-                className="block text-xs font-medium text-[#66736B] mb-1"
-              >
-                เวลาเริ่มต้น
-              </label>
-              <Input
-                id="cal-ev-start-time"
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="cal-ev-end-time"
-                className="block text-xs font-medium text-[#66736B] mb-1"
-              >
-                เวลาสิ้นสุด
-              </label>
-              <Input
-                id="cal-ev-end-time"
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label
-              htmlFor="cal-ev-recurrence"
-              className="block text-xs font-medium text-[#66736B] mb-1"
-            >
-              การทำซ้ำ
-            </label>
-            <Select
-              id="cal-ev-recurrence"
-              value={recurrence}
-              onChange={(e) =>
-                setRecurrence(e.target.value as CalendarEventRecurrence)
-              }
-              disabled={isRecurring && editScope === "single"}
-            >
-              <option value="never">ไม่ทำซ้ำ</option>
-              <option value="daily">ทุกวัน</option>
-              <option value="weekly">ทุกสัปดาห์</option>
-              <option value="monthly">ทุกเดือน</option>
-            </Select>
-          </div>
-          <div>
-            <label
-              htmlFor="cal-ev-reminder"
-              className="block text-xs font-medium text-[#66736B] mb-1"
-            >
-              การแจ้งเตือนล่วงหน้า
-            </label>
-            <Select
-              id="cal-ev-reminder"
-              value={reminderMinutes}
-              onChange={(e) => setReminderMinutes(e.target.value)}
-            >
-              <option value="none">ไม่แจ้งเตือน</option>
-              <option value="0">ตรงเวลาเริ่มกิจกรรม</option>
-              <option value="15">ล่วงหน้า 15 นาที</option>
-              <option value="30">ล่วงหน้า 30 นาที</option>
-              <option value="60">ล่วงหน้า 1 ชั่วโมง</option>
-              <option value="1440">ล่วงหน้า 1 วัน</option>
-            </Select>
-          </div>
-        </div>
-
-        {/* Recurring Edit Scope Selector */}
-        {isRecurring && editingOccurrence && (
-          <div className="rounded-md border border-[#CFE3D4] bg-[#EAF3EC]/50 p-3 space-y-2">
-            <p className="text-xs font-semibold text-[#17241D] flex items-center gap-1.5">
-              <Repeat className="h-3.5 w-3.5 text-[#256B4A]" />
-              ขอบเขตการแก้ไขกิจกรรมที่ทำซ้ำ
-            </p>
-            <div className="space-y-1.5 text-xs text-[#17241D]">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="edit-scope"
-                  value="single"
-                  checked={editScope === "single"}
-                  onChange={() => setEditScope("single")}
-                  className="accent-[#256B4A]"
-                />
-                <span>
-                  เฉพาะรอบนี้ ({editingOccurrence.occurrence_date})
-                </span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="edit-scope"
-                  value="future"
-                  checked={editScope === "future"}
-                  onChange={() => setEditScope("future")}
-                  className="accent-[#256B4A]"
-                />
-                <span>รอบนี้และรอบในอนาคตทั้งหมด</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="edit-scope"
-                  value="all"
-                  checked={editScope === "all"}
-                  onChange={() => setEditScope("all")}
-                  className="accent-[#256B4A]"
-                />
-                <span>ทั้งชุดกิจกรรมตั้งแต่เริ่มต้น</span>
-              </label>
-            </div>
-          </div>
-        )}
+        </details>
       </form>
     </Dialog>
   );

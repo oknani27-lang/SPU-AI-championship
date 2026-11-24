@@ -3,6 +3,7 @@ import { requireAuthContext } from "@/lib/auth";
 import { handleApiError, jsonOk } from "@/lib/http";
 
 const updateCalendarEventSchema = z.object({
+  event_type: z.enum(["general", "doctor"]).optional(),
   title: z.string().trim().min(1).max(200).optional(),
   description: z.string().max(1000).optional(),
   start_date: z
@@ -62,7 +63,7 @@ export async function DELETE(
     const { searchParams } = new URL(request.url);
     const scopeParam = searchParams.get("scope");
     const occurrenceDate = searchParams.get("occurrenceDate") ?? undefined;
-    const delete_scope = scopeParam === "single" ? "single" : "all";
+    const delete_scope = z.enum(["all","single","future"]).parse(scopeParam ?? "all");
 
     const result = await ctx.store.deleteCalendarEvent(ctx.userId, id, {
       delete_scope,

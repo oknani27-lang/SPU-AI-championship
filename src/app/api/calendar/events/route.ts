@@ -3,6 +3,7 @@ import { requireAuthContext } from "@/lib/auth";
 import { handleApiError, jsonOk } from "@/lib/http";
 
 const createCalendarEventSchema = z.object({
+  event_type: z.enum(["general", "doctor"]).optional(),
   title: z.string().trim().min(1, "กรุณาระบุชื่อกิจกรรม").max(200),
   description: z.string().max(1000).optional(),
   start_date: z

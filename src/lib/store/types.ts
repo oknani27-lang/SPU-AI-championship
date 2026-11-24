@@ -310,7 +310,7 @@ export interface CarePlanStore {
     userId: string,
     eventId: string,
     options?: {
-      delete_scope?: "all" | "single";
+      delete_scope?: "all" | "single" | "future";
       occurrence_date?: string;
     }
   ): Promise<{ deleted: true }>;

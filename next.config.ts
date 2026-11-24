@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Allow an isolated build/dev check alongside an existing local server.
+  distDir: process.env.CAREPLAN_DIST_DIR || ".next",
   images: {
     unoptimized: true,
   },

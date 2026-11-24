@@ -2,6 +2,15 @@
 
 **SPU AI Championship 2026 — Working MVP**
 
+### Calendar and doctor feature integration
+
+- `/calendar` keeps the existing care schedule and adds a `นัดพบแพทย์` event type. Saved doctor appointments link to `/doctor`, with links back to edit the correct calendar occurrence. Recurring edits/deletions support one occurrence or future occurrences.
+- `/doctor` shows calendar appointments, hospital contact/request mockups, and **สรุปผลการเข้าพบแพทย์**. The summary sends user-provided notes to Gemini only after explicit consent. Source quotations accompany each point; medicine instructions remain verbatim. The app does not save the notes/results, create prescriptions or contact hospitals. Users review before copying. AI failures are shown without a fabricated summary.
+- Apply `20261125000000_calendar_doctor_atomic_changes.sql` after the existing calendar migration. This adds the appointment type and atomic calendar change RPC. Apply `20261125000100_careplan_web_push.sql` for Push. Neither migration was applied to your hosted project automatically.
+- Background calendar notifications need VAPID configuration and a persistent worker; see [Push setup](docs/PUSH_SETUP.md). Existing care-task reminders stay separate. Demo never sends real Push.
+- `npm run test:features` runs real Demo API and browser checks against `http://localhost:3108`. Install Playwright separately or set `PLAYWRIGHT_MODULE` and `PLAYWRIGHT_BROWSER_PATH` to an existing installation. Screenshots go to ignored `outputs/`.
+- Previous Bizplan implementation remains safely in `git stash` (`backup original Bizplan calendar and doctor features before new main integration`). Current integration is based on `origin/main` commit `59c6284`.
+
 CarePlan คือเว็บแอปพลิเคชันช่วยครอบครัวจัดตารางการดูแลผู้สูงอายุ (60 ปีขึ้นไป) ที่บ้านแบบวนซ้ำ 7 วัน พร้อมผู้ช่วย AI 2 กระบวนการหลัก เพื่อ:
 1. **ลดเวลาจัดการงานดูแล (Time Management)**
 2. **เพิ่มประสิทธิภาพการดูแล (Efficiency)**
@@ -45,7 +54,7 @@ Copy `.env.example` to `.env.local` locally and never commit `.env` or `.env.loc
 | Variable | Required | Description |
 | :--- | :---: | :--- |
 | `GEMINI_API_KEY` | For Live AI | Google Gemini API key (falls back honestly to deterministic engine if absent) |
-| `GEMINI_MODEL` | Optional | Default `gemini-2.5-flash` |
+| `GEMINI_MODEL` | Optional | Default `gemini-3.5-flash` |
 | `SUPABASE_URL` | For Live DB | Supabase project URL (`NEXT_PUBLIC_SUPABASE_URL` alias supported) |
 | `SUPABASE_PUBLISHABLE_KEY` | For Live DB | Supabase publishable/anon key (`NEXT_PUBLIC_SUPABASE_ANON_KEY` alias supported) |
 | `SUPABASE_SECRET_KEY` | For Live DB | Server-only Supabase secret/service role key (`SUPABASE_SERVICE_ROLE_KEY` alias supported) |

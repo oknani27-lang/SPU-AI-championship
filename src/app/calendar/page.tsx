@@ -2,28 +2,22 @@
 
 import * as React from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import {
-  Bell,
   Calendar as CalendarIcon,
   CalendarPlus,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Coffee,
   Download,
-  Lock,
-  Repeat,
   Stethoscope,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useSession } from "@/components/care/SessionContext";
-import {
-  CalendarEventModal,
-  RECURRENCE_LABELS,
-} from "@/components/care/CalendarEventModal";
+const CalendarEventModal = dynamic(() => import("@/components/care/CalendarEventModal").then(module => module.CalendarEventModal));
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import {
   getCalendarEvents,
@@ -34,7 +28,6 @@ import {
 import {
   addDays,
   cn,
-  formatDuration,
   formatIsoDateUtc,
   formatThaiDate,
   getBangkokToday,
@@ -42,7 +35,6 @@ import {
   getWeekDates,
   getWeekMonday,
   parseIsoDate,
-  PRIORITY_META,
   THAI_MONTHS_FULL,
 } from "@/lib/utils";
 import {
@@ -55,6 +47,7 @@ import {
   type RecurringTaskTemplate,
   type WeeklyScheduleTemplate,
 } from "@/types/careplan";
+import { isValidDateString } from "@/lib/timezone";
 
 type CalendarViewMode = "month" | "week" | "day";
 
@@ -121,23 +114,17 @@ function getTemplatesForDate(
     .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
 }
 
-function formatReminderLabel(minutes: number | null): string {
-  if (minutes === null) return "ไม่แจ้งเตือน";
-  if (minutes === 0) return "ตรงเวลา";
-  if (minutes < 60) return `เตือนก่อน ${minutes} นาที`;
-  if (minutes === 60) return "เตือนก่อน 1 ชม.";
-  return `เตือนก่อน ${Math.round(minutes / 60)} ชม.`;
-}
-
 export default function CalendarPage() {
   return (
     <AppShell>
-      <CalendarContent />
+      <React.Suspense fallback={<p role="status">กำลังเปิดปฏิทิน…</p>}><CalendarContent /></React.Suspense>
     </AppShell>
   );
 }
 
 function CalendarContent() {
+  const searchParams = useSearchParams();
+  const queryKey = searchParams.toString();
   const { demoVersion } = useSession();
   const today = React.useMemo(() => getBangkokToday(), []);
 
@@ -160,14 +147,22 @@ function CalendarContent() {
 
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const loadRequest = React.useRef(0);
 
   // Modal state
   const [modalOpen, setModalOpen] = React.useState(false);
   const [modalDefaultDate, setModalDefaultDate] = React.useState(today);
+  const [defaultEventType, setDefaultEventType] = React.useState<"general" | "doctor">("general");
+  const handledQuery = React.useRef("");
   const [editingOccurrence, setEditingOccurrence] =
     React.useState<CalendarEventOccurrence | null>(null);
   const [editingRecord, setEditingRecord] =
     React.useState<CalendarEventRecord | null>(null);
+
+  React.useEffect(() => {
+    const date = searchParams.get("date");
+    if (date && isValidDateString(date)) setSelectedDate(date);
+  }, [queryKey, searchParams]);
 
   const monthGrid = React.useMemo(
     () => getMonthGridBounds(selectedDate),
@@ -180,6 +175,7 @@ function CalendarContent() {
   const weekDays = React.useMemo(() => getWeekDates(weekMonday), [weekMonday]);
 
   const loadData = React.useCallback(async () => {
+    const request = ++loadRequest.current;
     setLoading(true);
     setError(null);
     try {
@@ -199,18 +195,21 @@ function CalendarContent() {
       const [schedRes, calRes, dayRes, weekRes] = await Promise.all([
         getSchedule(),
         getCalendarEvents(rangeStart, rangeEnd),
-        getOccurrencesByDate(selectedDate),
+        viewMode === "week" ? Promise.resolve(null) : getOccurrencesByDate(selectedDate),
         viewMode === "week"
           ? getOccurrencesByWeek(weekMonday)
           : Promise.resolve(null),
       ]);
 
+      if (request !== loadRequest.current) return;
+
       setSchedule(schedRes.weekly_schedule);
       setTemplates(schedRes.templates || []);
       setEvents(calRes.events || []);
       setEventOccurrences(calRes.occurrences || []);
-      setDayTasks(dayRes.occurrences || []);
-      setDayIsRest(Boolean(dayRes.is_rest_day));
+      const selectedDay = dayRes ?? weekRes?.days?.find(day => day.date === selectedDate);
+      setDayTasks(selectedDay?.occurrences || []);
+      setDayIsRest(Boolean(selectedDay?.is_rest_day));
 
       if (weekRes) {
         const nextMap: Record<
@@ -226,16 +225,19 @@ function CalendarContent() {
         setWeekTaskMap(nextMap);
       }
     } catch (err) {
+      if (request !== loadRequest.current) return;
       setError(
         err instanceof Error ? err.message : "ไม่สามารถโหลดข้อมูลปฏิทินได้"
       );
     } finally {
-      setLoading(false);
+      if (request === loadRequest.current) setLoading(false);
     }
   }, [viewMode, monthGrid.gridStart, monthGrid.gridEnd, weekMonday, selectedDate]);
 
   React.useEffect(() => {
+    const requestState = loadRequest;
     void loadData();
+    return () => { requestState.current++; };
   }, [loadData, demoVersion]);
 
   const eventsByDate = React.useMemo(() => {
@@ -257,6 +259,7 @@ function CalendarContent() {
   const restDays = schedule?.rest_days ?? [];
 
   const openCreateModal = (date: string) => {
+    setDefaultEventType("general");
     setEditingOccurrence(null);
     setEditingRecord(null);
     setModalDefaultDate(date);
@@ -270,6 +273,24 @@ function CalendarContent() {
     setModalDefaultDate(occ.occurrence_date);
     setModalOpen(true);
   };
+
+  React.useEffect(() => {
+    if (!queryKey || handledQuery.current === queryKey) return;
+    if (searchParams.get("new") === "doctor") {
+      handledQuery.current = queryKey;
+      setEditingOccurrence(null); setEditingRecord(null);
+      setDefaultEventType("doctor"); setModalDefaultDate(selectedDate); setModalOpen(true);
+      return;
+    }
+    const id = searchParams.get("event"), date = searchParams.get("date");
+    if (!id || !date || !isValidDateString(date) || loading || selectedDate !== date) return;
+    const occurrence = eventOccurrences.find(event => event.event_id === id && event.occurrence_date === date);
+    const record = events.find(event => event.id === id);
+    if (!occurrence || !record) return;
+    handledQuery.current = queryKey;
+    setEditingOccurrence(occurrence); setEditingRecord(record);
+    setModalDefaultDate(date); setModalOpen(true);
+  }, [queryKey, searchParams, selectedDate, loading, eventOccurrences, events]);
 
   const handleNavigate = (direction: -1 | 1) => {
     if (viewMode === "month") {
@@ -303,11 +324,9 @@ function CalendarContent() {
         <div>
           <h1 className="text-2xl font-bold text-[#17241D] flex items-center gap-2">
             <CalendarIcon className="h-6 w-6 text-[#256B4A]" />
-            ปฏิทินการดูแลและกิจกรรม
+            ปฏิทิน
           </h1>
-          <p className="text-sm text-[#66736B] mt-0.5">
-            ดูงานดูแลประจำวันร่วมกับนัดหมายและกิจกรรมครอบครัว แบบมุมมองเดือน สัปดาห์ และวัน
-          </p>
+
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -324,7 +343,7 @@ function CalendarContent() {
             onClick={() => openCreateModal(selectedDate)}
           >
             <CalendarPlus className="h-4 w-4" />
-            สร้างกิจกรรม
+            เพิ่มกิจกรรม
           </Button>
         </div>
       </div>
@@ -393,22 +412,6 @@ function CalendarContent() {
             </button>
           ))}
         </div>
-      </div>
-
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-4 text-xs text-[#66736B] px-1">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#256B4A]" />
-          งานดูแลประจำวัน (CarePlan)
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#B86A32]" />
-          กิจกรรมและนัดหมายปฏิทิน
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#D1DCD4]" />
-          วันพักของตาราง
-        </span>
       </div>
 
       {/* ==================== MONTH VIEW ==================== */}
@@ -696,14 +699,15 @@ function CalendarContent() {
       )}
 
       {/* Event Create / Edit / Delete Modal */}
-      <CalendarEventModal
+      {modalOpen && <CalendarEventModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         defaultDate={modalDefaultDate}
+        defaultEventType={defaultEventType}
         editingOccurrence={editingOccurrence}
         editingRecord={editingRecord}
         onSaved={() => void loadData()}
-      />
+      />}
     </div>
   );
 }
@@ -747,200 +751,22 @@ function SelectedDaySchedulePanel({
     return items.sort((a, b) => a.sortTime.localeCompare(b.sortTime));
   }, [tasks, events]);
 
+
   return (
-    <section className="rounded-lg border border-[#E3E9E3] bg-[#FFFFFF] p-4 sm:p-5 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E3E9E3] pb-3">
-        <div>
-          <h3 className="text-base sm:text-lg font-semibold text-[#17241D]">
-            กำหนดการ — {formatThaiDate(date, { fullMonth: true })}
-          </h3>
-          <p className="text-xs text-[#66736B] mt-0.5">
-            งานดูแล {tasks.length} รายการ · กิจกรรมปฏิทิน {events.length} รายการ
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {!fullPage && onOpenDayView && (
-            <Button size="sm" variant="outline" onClick={onOpenDayView}>
-              เปิดมุมมองรายวัน
-            </Button>
-          )}
-          <Button size="sm" variant="secondary" onClick={onCreateEvent}>
-            <CalendarPlus className="h-3.5 w-3.5" />
-            เพิ่มกิจกรรมวันนี้
-          </Button>
-        </div>
+    <section className="rounded-lg border border-[#E3E9E3] bg-white p-4 sm:p-5 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="font-semibold text-[#17241D]">{formatThaiDate(date, { fullMonth: true })}</h3>
+        <div className="flex gap-2">{!fullPage && onOpenDayView && <Button size="sm" variant="ghost" onClick={onOpenDayView}>ดูทั้งวัน</Button>}<Button size="sm" variant="secondary" onClick={onCreateEvent}><CalendarPlus className="h-3.5 w-3.5" />เพิ่มกิจกรรม</Button></div>
       </div>
-
-      {isRestDay && (
-        <Alert variant="sage" title="วันนี้เป็นวันพักของตาราง (Rest Day)">
-          CarePlan พักการสร้างงานดูแลและแจ้งเตือนอัตโนมัติในวันนี้
-          (กิจกรรมปฏิทินที่สร้างเองยังคงแสดงตามปกติ และยาหรือการดูแลตามคำสั่งแพทย์ยังคงต้องดูแลตามปกติ)
-        </Alert>
-      )}
-
-      {allDayEvents.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-xs font-semibold text-[#66736B]">กิจกรรมตลอดวัน</p>
-          <div className="space-y-1.5">
-            {allDayEvents.map((ev) => (
-              <button
-                key={ev.occurrence_key}
-                type="button"
-                onClick={() => onEditEvent(ev)}
-                className="w-full text-left rounded-md border border-[#EBCBB2] bg-[#FDF6F0] px-3 py-2 flex flex-wrap items-center justify-between gap-2 hover:bg-[#F9E8D9] transition-colors"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-[#17241D]">
-                    {ev.title}
-                  </p>
-                  {ev.description && (
-                    <p className="text-xs text-[#66736B] line-clamp-1">
-                      {ev.description}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Badge variant="warning">ตลอดวัน</Badge>
-                  {ev.recurrence !== "never" && (
-                    <Badge variant="neutral">
-                      <Repeat className="h-3 w-3" />
-                      {RECURRENCE_LABELS[ev.recurrence]}
-                    </Badge>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="space-y-2 py-2">
-          <div className="h-14 rounded-md bg-[#F4F7F4] animate-pulse" />
-          <div className="h-14 rounded-md bg-[#F4F7F4] animate-pulse" />
-        </div>
-      ) : timedItems.length === 0 && allDayEvents.length === 0 ? (
-        <div className="rounded-md border border-dashed border-[#D4DDD6] bg-[#FAFBF9] py-8 px-4 text-center space-y-2">
-          <p className="text-sm font-medium text-[#17241D]">
-            ยังไม่มีงานดูแลหรือกิจกรรมในวันนี้
-          </p>
-          <p className="text-xs text-[#66736B]">
-            กดปุ่ม &ldquo;เพิ่มกิจกรรมวันนี้&rdquo; เพื่อสร้างนัดหมาย หรือไปที่หน้าตารางสัปดาห์เพื่อเพิ่มงานดูแลประจำ
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {timedItems.map((item) => {
-            if (item.kind === "event") {
-              const ev = item.event;
-              return (
-                <button
-                  key={ev.occurrence_key}
-                  type="button"
-                  onClick={() => onEditEvent(ev)}
-                  className="w-full text-left rounded-lg border border-[#EBCBB2] bg-[#FDF6F0]/75 p-3.5 hover:bg-[#FDF6F0] transition-colors flex flex-wrap items-start justify-between gap-3"
-                >
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="w-20 shrink-0">
-                      <p className="text-sm font-bold text-[#B86A32] tabular-nums">
-                        {ev.start_time}
-                      </p>
-                      <p className="text-[11px] text-[#7A441D] tabular-nums">
-                        ถึง {ev.end_time} น.
-                      </p>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <Badge variant="warning">กิจกรรมปฏิทิน</Badge>
-                        {ev.recurrence !== "never" && (
-                          <Badge variant="neutral">
-                            <Repeat className="h-3 w-3" />
-                            {RECURRENCE_LABELS[ev.recurrence]}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="font-semibold text-[15px] text-[#17241D] mt-1">
-                        {ev.title}
-                      </p>
-                      {ev.description && (
-                        <p className="text-xs text-[#66736B] mt-0.5">
-                          {ev.description}
-                        </p>
-                      )}
-                      <p className="text-[11px] text-[#7A441D] mt-1 flex items-center gap-1">
-                        <Bell className="h-3 w-3" />
-                        {formatReminderLabel(ev.reminder_minutes)}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-medium text-[#B86A32] shrink-0">
-                    แก้ไข / ลบ →
-                  </span>
-                </button>
-              );
-            }
-
-            const task = item.task;
-            const completed = task.status === "completed";
-            const priorityMeta = PRIORITY_META[task.priority];
-            return (
-              <Link
-                key={task.id}
-                href={`/tasks/${task.id}`}
-                className={cn(
-                  "rounded-lg border p-3.5 transition-colors flex flex-wrap items-start justify-between gap-3",
-                  completed
-                    ? "border-[#CFE3D4] bg-[#EAF3EC]/45"
-                    : "border-[#E3E9E3] bg-[#FFFFFF] hover:border-[#256B4A]/40"
-                )}
-              >
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="w-20 shrink-0">
-                    <p className="text-sm font-bold text-[#256B4A] tabular-nums">
-                      {task.scheduled_time} น.
-                    </p>
-                    <p className="text-[11px] text-[#66736B] flex items-center gap-0.5">
-                      <Clock className="h-3 w-3" />
-                      {formatDuration(task.duration_minutes)}
-                    </p>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge variant="primary">งานดูแลประจำ</Badge>
-                      <Badge variant={priorityMeta.badgeVariant}>
-                        {priorityMeta.label}
-                      </Badge>
-                      {task.is_medically_prescribed && (
-                        <Badge variant="warning">
-                          <Stethoscope className="h-3 w-3" />
-                          ตามแพทย์กำหนด
-                        </Badge>
-                      )}
-                      {completed && (
-                        <Badge variant="sage">
-                          <Lock className="h-3 w-3" />
-                          ยืนยันแล้ว
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="font-semibold text-[15px] text-[#17241D] mt-1">
-                      {task.title}
-                    </p>
-                    {task.description && (
-                      <p className="text-xs text-[#66736B] mt-0.5 line-clamp-2">
-                        {task.description}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <span className="text-xs font-medium text-[#256B4A] shrink-0">
-                  {completed ? "ดูหลักฐาน →" : "เปิดงาน →"}
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      )}
+      {isRestDay && <p className="rounded-md bg-[#F0F5EE] p-3 text-xs text-[#66736B]">วันพักตาราง · การดูแลตามแพทย์กำหนดยังคงเดิม</p>}
+      {loading ? <div className="h-16 animate-pulse rounded bg-[#F4F7F4]" /> : timedItems.length === 0 && allDayEvents.length === 0 ? <p className="py-8 text-center text-sm text-[#66736B]">วันนี้ยังไม่มีรายการ</p> : <div className="divide-y divide-[#E3E9E3]">
+        {allDayEvents.map(ev => <button key={ev.occurrence_key} type="button" onClick={() => onEditEvent(ev)} className="flex w-full items-center gap-3 py-3 text-left hover:bg-[#FAFBF9]"><span className="w-16 shrink-0 text-xs text-[#B86A32]">ทั้งวัน</span><span className="min-w-0 flex-1 break-words text-sm font-medium">{ev.title}</span><ChevronRight className="h-4 w-4 shrink-0 text-[#87958C]" /></button>)}
+        {timedItems.map(item => {
+          if (item.kind === "event") { const ev = item.event; return <button key={ev.occurrence_key} type="button" onClick={() => onEditEvent(ev)} className="flex w-full items-center gap-3 py-3.5 text-left hover:bg-[#FAFBF9]"><span className="w-16 shrink-0 text-sm font-semibold tabular-nums text-[#B86A32]">{ev.start_time}</span><span className="min-w-0 flex-1 break-words text-sm font-medium">{ev.title}</span>{ev.event_type === "doctor" && <Stethoscope className="h-4 w-4 text-[#48735B] shrink-0" aria-label="นัดพบแพทย์" />}<ChevronRight className="h-4 w-4 shrink-0 text-[#87958C]" /></button>; }
+          const task = item.task, completed = task.status === "completed";
+          return <Link key={task.id} href={`/tasks/${task.id}`} className="flex items-center gap-3 py-3.5 hover:bg-[#FAFBF9]"><span className="w-16 shrink-0 text-sm font-semibold tabular-nums text-[#256B4A]">{task.scheduled_time}</span><span className="min-w-0 flex-1"><span className="block break-words text-sm font-medium">{task.title}</span>{task.is_medically_prescribed && <span className="text-[11px] text-[#66736B]">ตามแพทย์กำหนด</span>}</span>{completed ? <CheckCircle2 className="h-4 w-4 shrink-0 text-[#256B4A]" aria-label="เสร็จแล้ว" /> : <ChevronRight className="h-4 w-4 shrink-0 text-[#87958C]" />}</Link>;
+        })}
+      </div>}
     </section>
   );
 }

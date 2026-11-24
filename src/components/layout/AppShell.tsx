@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Bell,
+  Building2,
   Calendar,
   CalendarCheck2,
   CalendarRange,
@@ -16,6 +17,7 @@ import {
   LogOut,
   RotateCcw,
   Settings,
+  Stethoscope,
   User,
 } from "lucide-react";
 import { AuthGate } from "@/components/care/AuthGate";
@@ -40,26 +42,46 @@ import type { NotificationDeliveryLog } from "@/types/careplan";
 const NAV_ITEMS = [
   { href: "/", label: "วันนี้", fullLabel: "วันนี้", icon: Home },
   { href: "/schedule", label: "ตาราง", fullLabel: "ตาราง 7 วัน", icon: CalendarRange },
+  { href: "/doctor", label: "นัดแพทย์", fullLabel: "นัดหมายแพทย์", icon: Stethoscope },
   { href: "/calendar", label: "ปฏิทิน", fullLabel: "ปฏิทิน", icon: Calendar },
   { href: "/summary", label: "สรุป", fullLabel: "สรุปผล", icon: FileBarChart2 },
   { href: "/history", label: "ประวัติ", fullLabel: "ประวัติงาน", icon: History },
   { href: "/settings", label: "ตั้งค่า", fullLabel: "ตั้งค่า", icon: Settings },
 ] as const;
 
+const InsideShell = React.createContext(false);
+
+/** Root-layout frame survives route transitions; page wrappers remain compatible. */
+export function ApplicationFrame({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (pathname === "/login" || pathname === "/register" || pathname.startsWith("/share/")) return <>{children}</>;
+  return <AppShell>{children}</AppShell>;
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const nested = React.useContext(InsideShell);
+  if (nested) return <>{children}</>;
   return (
     <AuthGate>
-      <AppShellInner>{children}</AppShellInner>
+      <SessionShell>{children}</SessionShell>
     </AuthGate>
   );
 }
 
+function SessionShell({ children }: { children: React.ReactNode }) {
+  const { session } = useSession();
+  return <InsideShell.Provider value={true}><AppShellInner key={`${session?.mode}:${session?.user?.id}`}>{children}</AppShellInner></InsideShell.Provider>;
+}
+
 function AppShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const warmRoute = (href: string) => { if (href !== pathname) router.prefetch(href); };
   const { session, startDemo, logout, demoVersion } = useSession();
 
   const [resettingDemo, setResettingDemo] = React.useState(false);
   const [loggingOut, setLoggingOut] = React.useState(false);
+  const [logoutError, setLogoutError] = React.useState<string | null>(null);
 
   // Notifications popover state
   const [bellOpen, setBellOpen] = React.useState(false);
@@ -73,6 +95,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   );
   const [simFeedback, setSimFeedback] = React.useState<string | null>(null);
   const bellRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => { setBellOpen(false); }, [pathname]);
 
   const loadNotifications = React.useCallback(async () => {
     setLoadingBell(true);
@@ -155,8 +178,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
   const handleLogout = async () => {
     setLoggingOut(true);
+    setLogoutError(null);
     try {
       await logout();
+    } catch (error) {
+      setLogoutError(error instanceof Error ? error.message : "ออกจากระบบไม่สำเร็จ กรุณาลองใหม่");
     } finally {
       setLoggingOut(false);
     }
@@ -257,6 +283,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                onMouseEnter={() => warmRoute(item.href)}
+                onFocus={() => warmRoute(item.href)}
+                onTouchStart={() => warmRoute(item.href)}
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex items-center gap-2.5 rounded-md px-3 py-2 text-[15px] font-medium transition-colors",
@@ -275,6 +304,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+          <a href="https://www.dop.go.th/th" target="_blank" rel="noopener noreferrer" aria-label="ติดต่อหน่วยงานภาครัฐ กรมกิจการผู้สูงอายุ (เปิดแท็บใหม่)" className="flex items-center gap-2.5 rounded-md px-3 py-2 text-[15px] font-medium text-[#17241D] hover:bg-[#F4F7F4]">
+            <Building2 className="h-4 w-4 shrink-0 text-[#66736B]" /><span>ติดต่อหน่วยงานภาครัฐ</span><span aria-hidden="true" className="ml-auto text-xs text-[#66736B]">↗</span>
+          </a>
         </nav>
 
         <div className="border-t border-[#E3E9E3] p-3 space-y-2.5">
@@ -314,6 +346,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 pb-16 lg:pb-0">
+        {logoutError && <p role="alert" className="px-4 py-3 text-sm text-red-700 bg-red-50">{logoutError}</p>}
         {/* Hackathon Demo Mode Banner */}
         {session?.mode === "demo" && (
           <div className="no-print border-b border-[#CFE3D4] bg-[#EAF3EC] px-4 py-2">
@@ -323,7 +356,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                   Demo
                 </Badge>
                 <span className="leading-snug">
-                  โหมดสาธิต — ข้อมูลตัวอย่าง ไม่ใช่ฐานข้อมูลจริง
+                  ข้อมูลทดลอง
                 </span>
               </div>
               <Button
@@ -334,7 +367,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                 className="h-7 px-2.5 text-xs bg-[#FFFFFF]"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
-                รีเซ็ตข้อมูลสาธิต
+                เริ่มใหม่
               </Button>
             </div>
           </div>
@@ -357,9 +390,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             {/* Desktop Context Info */}
             <div className="hidden lg:flex items-center gap-2 text-sm text-[#66736B]">
               {session?.gemini_configured ? (
-                <Badge variant="sage">Gemini AI พร้อมใช้งาน</Badge>
+                <Badge variant="neutral">ตั้งค่าคีย์ AI แล้ว</Badge>
               ) : (
-                <Badge variant="neutral">AI โหมดสาธิต (ไม่ได้เรียก Gemini)</Badge>
+                <Badge variant="neutral">ยังไม่ได้ตั้งค่าคีย์ AI</Badge>
               )}
             </div>
 
@@ -538,7 +571,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         aria-label="เมนูหลักบนมือถือ"
         className="no-print lg:hidden fixed bottom-0 inset-x-0 z-30 border-t border-[#E3E9E3] bg-[#FFFFFF]"
       >
-        <div className="grid grid-cols-6 h-15">
+        <div className="grid grid-cols-8 h-15">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const active = isNavActive(item.href);
@@ -546,6 +579,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                onMouseEnter={() => warmRoute(item.href)}
+                onFocus={() => warmRoute(item.href)}
+                onTouchStart={() => warmRoute(item.href)}
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex flex-col items-center justify-center gap-0.5 px-0.5 text-[10px] font-medium transition-colors min-w-0",
@@ -557,6 +593,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+          <a href="https://www.dop.go.th/th" target="_blank" rel="noopener noreferrer" aria-label="ติดต่อหน่วยงานภาครัฐ กรมกิจการผู้สูงอายุ (เปิดแท็บใหม่)" className="flex min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 text-[10px] font-medium text-[#66736B]">
+            <Building2 className="h-4 w-4 shrink-0" /><span>ภาครัฐ ↗</span>
+          </a>
         </div>
       </nav>
     </div>

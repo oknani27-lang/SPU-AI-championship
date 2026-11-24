@@ -61,12 +61,27 @@ export const textToTaskExtractedItemSchema = z.object({
   priority: taskPrioritySchema.default("medium"),
   is_fixed_time: z.boolean().default(false),
   is_medically_prescribed: z.boolean().default(false),
-  assumption_note: z.string().max(300).optional(),
+  assumption_note: z.string().max(300).nullish().transform(value => value ?? undefined),
+  depends_on_temp_id: z.string().nullable().optional(),
 });
 
 export const textToTaskGeminiOutputSchema = z.object({
   extracted_tasks: z.array(textToTaskExtractedItemSchema).min(1),
   missing_info_questions: z.array(z.string()).default([]),
+}).superRefine((value, ctx) => {
+  const byId = new Map(value.extracted_tasks.map(task => [task.temp_id, task]));
+  if (byId.size !== value.extracted_tasks.length) ctx.addIssue({ code: "custom", message: "Duplicate task IDs" });
+  for (const task of value.extracted_tasks) {
+    const seen = new Set([task.temp_id]);
+    let parentId = task.depends_on_temp_id;
+    while (parentId) {
+      const parent = byId.get(parentId);
+      if (!parent || seen.has(parentId) || parent.day_of_week !== task.day_of_week) {
+        ctx.addIssue({ code: "custom", message: "Invalid task dependency" }); break;
+      }
+      seen.add(parentId); parentId = parent.depends_on_temp_id;
+    }
+  }
 });
 
 export const dailySummaryGeminiOutputSchema = z.object({

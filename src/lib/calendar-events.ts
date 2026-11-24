@@ -15,6 +15,7 @@ export const VALID_RECURRENCES = new Set<CalendarEventRecurrence>([
 ]);
 
 export interface NormalizedCalendarEventFields {
+  event_type: "general" | "doctor";
   title: string;
   description: string;
   start_date: string;
@@ -51,6 +52,7 @@ export function normalizeCalendarEventInput(
     throw new ValidationError("วันที่สิ้นสุดต้องไม่น้อยกว่าวันที่เริ่มต้น");
   }
 
+  if (diffDays(input.start_date,endDate)>366) throw new ValidationError("กิจกรรมต้องมีระยะเวลาไม่เกิน 366 วัน");
   const isAllDay = Boolean(input.is_all_day);
   const startTime = isAllDay ? "00:00" : (input.start_time ?? "09:00");
   const endTime = isAllDay ? "23:59" : (input.end_time ?? "10:00");
@@ -59,8 +61,8 @@ export function normalizeCalendarEventInput(
     if (!isValidHHMM(startTime) || !isValidHHMM(endTime)) {
       throw new ValidationError("รูปแบบเวลาไม่ถูกต้อง (ต้องเป็น HH:mm)");
     }
-    if (input.start_date === endDate && endTime < startTime) {
-      throw new ValidationError("เวลาสิ้นสุดต้องไม่น้อยกว่าเวลาเริ่มต้น");
+    if (input.start_date === endDate && endTime <= startTime) {
+      throw new ValidationError("เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่มต้น");
     }
   }
 
@@ -91,7 +93,10 @@ export function normalizeCalendarEventInput(
     reminderMinutes = rounded;
   }
 
+  const eventType = input.event_type ?? "general";
+  if (eventType !== "general" && eventType !== "doctor") throw new ValidationError("ประเภทกิจกรรมไม่ถูกต้อง");
   return {
+    event_type: eventType,
     title,
     description,
     start_date: input.start_date,
@@ -162,6 +167,7 @@ export function expandCalendarEventsForRange(
         event_id: ev.id,
         occurrence_date: occStart,
         end_date: occEnd,
+        event_type: ev.event_type ?? "general",
         title: ev.title,
         description: ev.description,
         start_time: ev.is_all_day ? "00:00" : ev.start_time,
@@ -182,7 +188,7 @@ export function expandCalendarEventsForRange(
       const startOffset = Math.max(0, diffDays(ev.start_date, rangeStart) - spanDays);
       let cursor = addDays(ev.start_date, startOffset);
       let guard = 0;
-      while (cursor <= effectiveEnd && guard < 400) {
+      while (cursor <= effectiveEnd && guard < 800) {
         pushIfOverlaps(cursor, true);
         cursor = addDays(cursor, 1);
         guard++;
@@ -206,7 +212,7 @@ export function expandCalendarEventsForRange(
     if (ev.recurrence === "monthly") {
       const [sy, sm] = ev.start_date.split("-").map(Number);
       const [ry, rm] = rangeStart.split("-").map(Number);
-      let monthOffset = Math.max(0, (ry - sy) * 12 + (rm - sm) - 1);
+      let monthOffset = Math.max(0, (ry - sy) * 12 + (rm - sm) - Math.ceil(spanDays / 28) - 1);
       let guard = 0;
       while (guard < 36) {
         const candidate = addMonthsClamped(ev.start_date, monthOffset);
@@ -225,4 +231,17 @@ export function expandCalendarEventsForRange(
     if (a.is_all_day !== b.is_all_day) return a.is_all_day ? -1 : 1;
     return a.start_time.localeCompare(b.start_time);
   });
+}
+
+export function assertCalendarOccurrence(event: CalendarEventRecord, date: string | undefined): asserts date is string {
+  if (!date || !isValidDateString(date) || !expandCalendarEventsForRange([event], date, date).some(o => o.occurrence_date === date)) {
+    throw new ValidationError("ไม่พบรอบกิจกรรมในวันที่เลือก");
+  }
+}
+
+export function calendarRange(start?: string, end?: string): [string,string] {
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
+  const from = start ?? addDays(today,-31), to = end ?? addDays(today,62);
+  if (!isValidDateString(from) || !isValidDateString(to) || to < from || diffCalendarDays(from,to)>366) throw new ValidationError("เลือกช่วงวันที่ที่ถูกต้องไม่เกิน 366 วัน");
+  return [from,to];
 }

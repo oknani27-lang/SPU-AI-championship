@@ -7,6 +7,7 @@ import {
   startDemoSession,
 } from "@/lib/api-client";
 import type { SessionState } from "@/types/careplan";
+import { disablePushNotifications } from "@/lib/push/client";
 
 interface SessionContextValue {
   session: SessionState | null;
@@ -68,12 +69,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = React.useCallback(async () => {
+    if (session?.mode === "supabase") await disablePushNotifications();
     try {
       await logoutAccount();
     } finally {
       await refreshSession();
     }
-  }, [refreshSession]);
+  }, [refreshSession, session?.mode]);
 
   const value = React.useMemo<SessionContextValue>(
     () => ({

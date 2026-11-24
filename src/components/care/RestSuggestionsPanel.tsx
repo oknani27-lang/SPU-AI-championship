@@ -37,9 +37,11 @@ export function RestSuggestionsPanel({
   const [generating, setGenerating] = React.useState(false);
   const [updatingId, setUpdatingId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [generatedBy, setGeneratedBy] = React.useState<"ai" | "fallback" | null>(null);
 
   const loadSuggestions = React.useCallback(async () => {
     setLoading(true);
+    setGeneratedBy(null);
     setError(null);
     try {
       const res = await getRestSuggestions(date);
@@ -64,6 +66,7 @@ export function RestSuggestionsPanel({
     setError(null);
     try {
       const res = await generateRestSuggestions(date);
+      setGeneratedBy(res.ai ? (res.ai.used_fallback ? "fallback" : "ai") : null);
       setSuggestions(res.suggestions || []);
     } catch (err) {
       setError(
@@ -123,6 +126,7 @@ export function RestSuggestionsPanel({
       </div>
 
       {error && <Alert variant="error">{error}</Alert>}
+      {generatedBy && <Badge variant={generatedBy === "ai" ? "sage" : "warning"}>{generatedBy === "ai" ? "แนะนำโดย AI" : "ใช้ระบบสำรอง · AI ไม่พร้อม"}</Badge>}
 
       {loading && suggestions.length === 0 ? (
         <div className="h-16 rounded-md bg-[#FAFBF9] animate-pulse" />

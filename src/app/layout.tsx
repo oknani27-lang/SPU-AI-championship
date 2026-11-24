@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Sarabun } from "next/font/google";
 import { SessionProvider } from "@/components/care/SessionContext";
+import { ApplicationFrame } from "@/components/layout/AppShell";
 import "./globals.css";
 
 const sarabun = Sarabun({
@@ -11,6 +12,9 @@ const sarabun = Sarabun({
 });
 
 export const metadata: Metadata = {
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "CarePlan", statusBarStyle: "default" },
+  icons: { apple: "/careplan-192.png" },
   title: "CarePlan — ผู้ช่วยจัดตารางดูแลผู้สูงอายุรายสัปดาห์",
   description:
     "ระบบวางแผนและติดตามตารางดูแลผู้สูงอายุรายสัปดาห์สำหรับผู้ดูแลที่บ้าน พร้อมยืนยันภาพถ่าย สรุปผลประจำวัน และแชร์ตารางให้ครอบครัวผ่าน LINE",
@@ -30,7 +34,7 @@ export default function RootLayout({
   return (
     <html lang="th" className={sarabun.variable}>
       <body className="bg-[#FAFBF9] text-[#17241D] antialiased">
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider><ApplicationFrame>{children}</ApplicationFrame></SessionProvider>
       </body>
     </html>
   );

@@ -28,7 +28,7 @@ function readClean(value: string | undefined): string | null {
 
 export function getServerEnv(): ServerEnv {
   const geminiApiKey = readClean(process.env.GEMINI_API_KEY);
-  const geminiModel = readClean(process.env.GEMINI_MODEL) ?? "gemini-2.5-flash";
+  const geminiModel = readClean(process.env.GEMINI_MODEL) ?? "gemini-3.5-flash";
   const supabaseUrl =
     readClean(process.env.SUPABASE_URL) ??
     readClean(process.env.NEXT_PUBLIC_SUPABASE_URL);

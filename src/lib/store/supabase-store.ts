@@ -25,6 +25,8 @@ import type {
   WeeklyScheduleTemplate,
 } from "@/types/careplan";
 import {
+  assertCalendarOccurrence,
+  calendarRange,
   diffCalendarDays,
   expandCalendarEventsForRange,
   normalizeCalendarEventInput,
@@ -1969,24 +1971,16 @@ export class SupabaseStore implements CarePlanStore {
     occurrences: CalendarEventOccurrence[];
   }> {
     await this.requireBootstrap(userId);
-    const { data, error } = await this.adminClient
-      .from("careplan_calendar_events")
-      .select("*")
-      .eq("user_id", userId)
-      .order("start_date", { ascending: true })
-      .order("start_time", { ascending: true });
-
-    if (error) {
-      throw new Error(`Failed to load calendar events: ${error.message}`);
+    const [start,end] = calendarRange(rangeStart,rangeEnd);
+    const events: CalendarEventRecord[] = [];
+    for (let offset=0; offset<=10000; offset+=500) {
+      const {data,error} = await this.adminClient.from("careplan_calendar_events").select("*").eq("user_id",userId).order("id",{ascending:true}).range(offset,offset+499);
+      if (error) throw new Error(`Failed to load calendar events: ${error.message}`);
+      const rows = (data ?? []) as CalendarEventRecord[];
+      events.push(...rows.map(e=>({...e,event_type:e.event_type ?? "general",excluded_dates:Array.isArray(e.excluded_dates)?e.excluded_dates:[]})));
+      if (rows.length<500) break;
+      if (offset===10000) throw new ValidationError("มีกิจกรรมมากเกินไป กรุณาลดจำนวนรายการ");
     }
-
-    const events = ((data ?? []) as CalendarEventRecord[]).map((e) => ({
-      ...e,
-      excluded_dates: Array.isArray(e.excluded_dates) ? e.excluded_dates : [],
-    }));
-    const today = getThaiTodayDate();
-    const start = rangeStart && isValidDateString(rangeStart) ? rangeStart : addDays(today, -31);
-    const end = rangeEnd && isValidDateString(rangeEnd) ? rangeEnd : addDays(today, 62);
     return {
       events,
       occurrences: expandCalendarEventsForRange(events, start, end),
@@ -2016,235 +2010,42 @@ export class SupabaseStore implements CarePlanStore {
     return { ...data, excluded_dates: data.excluded_dates ?? [] };
   }
 
-  async updateCalendarEvent(
-    userId: string,
-    eventId: string,
-    input: UpdateCalendarEventInput
-  ): Promise<{
-    event: CalendarEventRecord;
-    split_event?: CalendarEventRecord;
-  }> {
+  async updateCalendarEvent(userId: string,eventId: string,input: UpdateCalendarEventInput): Promise<{event: CalendarEventRecord;split_event?: CalendarEventRecord}> {
     await this.requireBootstrap(userId);
-    const { data: existing } = await this.adminClient
-      .from("careplan_calendar_events")
-      .select("*")
-      .eq("id", eventId)
-      .maybeSingle<CalendarEventRecord>();
-
-    if (!existing) {
-      throw new NotFoundError("ไม่พบกิจกรรมในปฏิทินที่ต้องการแก้ไข");
-    }
-    if (existing.user_id !== userId) {
-      throw new ForbiddenError("คุณไม่มีสิทธิ์แก้ไขกิจกรรมของผู้อื่น");
-    }
-
-    const existingExcluded = Array.isArray(existing.excluded_dates)
-      ? existing.excluded_dates
-      : [];
-    const editScope = input.edit_scope ?? "all";
-    const spanDays = Math.max(0, diffCalendarDays(existing.start_date, existing.end_date));
-
-    if (
-      (editScope === "single" || editScope === "future") &&
-      existing.recurrence !== "never"
-    ) {
-      const occDate = input.occurrence_date;
-      if (!occDate || !isValidDateString(occDate)) {
-        throw new ValidationError("กรุณาระบุวันที่ของรอบกิจกรรมที่ต้องการแก้ไข (occurrence_date)");
-      }
-
-      if (editScope === "single") {
-        const nextStart = input.start_date ?? occDate;
-        const nextEnd =
-          input.end_date ?? (spanDays > 0 ? addDays(nextStart, spanDays) : nextStart);
-        const normalizedSingle = normalizeCalendarEventInput({
-          title: input.title ?? existing.title,
-          description: input.description ?? existing.description,
-          start_date: nextStart,
-          end_date: nextEnd,
-          start_time: input.start_time ?? existing.start_time,
-          end_time: input.end_time ?? existing.end_time,
-          is_all_day: input.is_all_day ?? existing.is_all_day,
-          recurrence: "never",
-          until_date: null,
-          reminder_minutes:
-            input.reminder_minutes !== undefined
-              ? input.reminder_minutes
-              : existing.reminder_minutes,
-        });
-
-        const nextExcluded = existingExcluded.includes(occDate)
-          ? existingExcluded
-          : [...existingExcluded, occDate];
-
-        const { data: updatedOrig, error: updErr } = await this.adminClient
-          .from("careplan_calendar_events")
-          .update({ excluded_dates: nextExcluded })
-          .eq("id", eventId)
-          .eq("user_id", userId)
-          .select("*")
-          .single<CalendarEventRecord>();
-
-        if (updErr || !updatedOrig) {
-          throw new Error(`Failed to exclude single occurrence: ${updErr?.message}`);
-        }
-
-        const { data: splitEvent, error: insErr } = await this.adminClient
-          .from("careplan_calendar_events")
-          .insert({
-            user_id: userId,
-            ...normalizedSingle,
-            excluded_dates: [],
-          })
-          .select("*")
-          .single<CalendarEventRecord>();
-
-        if (insErr || !splitEvent) {
-          throw new Error(`Failed to insert split event: ${insErr?.message}`);
-        }
-        return { event: updatedOrig, split_event: splitEvent };
-      }
-
-      if (occDate > existing.start_date) {
-        const nextStart = input.start_date ?? occDate;
-        const nextEnd =
-          input.end_date ?? (spanDays > 0 ? addDays(nextStart, spanDays) : nextStart);
-        const normalizedFuture = normalizeCalendarEventInput({
-          title: input.title ?? existing.title,
-          description: input.description ?? existing.description,
-          start_date: nextStart,
-          end_date: nextEnd,
-          start_time: input.start_time ?? existing.start_time,
-          end_time: input.end_time ?? existing.end_time,
-          is_all_day: input.is_all_day ?? existing.is_all_day,
-          recurrence: input.recurrence ?? existing.recurrence,
-          until_date:
-            input.until_date !== undefined ? input.until_date : existing.until_date,
-          reminder_minutes:
-            input.reminder_minutes !== undefined
-              ? input.reminder_minutes
-              : existing.reminder_minutes,
-        });
-
-        const { data: updatedOrig, error: updErr } = await this.adminClient
-          .from("careplan_calendar_events")
-          .update({ until_date: addDays(occDate, -1) })
-          .eq("id", eventId)
-          .eq("user_id", userId)
-          .select("*")
-          .single<CalendarEventRecord>();
-
-        if (updErr || !updatedOrig) {
-          throw new Error(`Failed to close original recurring event: ${updErr?.message}`);
-        }
-
-        const { data: splitEvent, error: insErr } = await this.adminClient
-          .from("careplan_calendar_events")
-          .insert({
-            user_id: userId,
-            ...normalizedFuture,
-            excluded_dates: [],
-          })
-          .select("*")
-          .single<CalendarEventRecord>();
-
-        if (insErr || !splitEvent) {
-          throw new Error(`Failed to create future recurring event: ${insErr?.message}`);
-        }
-        return { event: updatedOrig, split_event: splitEvent };
-      }
-    }
-
-    const nextStart = input.start_date ?? existing.start_date;
-    const nextEnd =
-      input.end_date ??
-      (input.start_date ? addDays(nextStart, spanDays) : existing.end_date);
-    const normalizedAll = normalizeCalendarEventInput({
-      title: input.title ?? existing.title,
-      description: input.description ?? existing.description,
-      start_date: nextStart,
-      end_date: nextEnd,
-      start_time: input.start_time ?? existing.start_time,
-      end_time: input.end_time ?? existing.end_time,
-      is_all_day: input.is_all_day ?? existing.is_all_day,
-      recurrence: input.recurrence ?? existing.recurrence,
-      until_date:
-        input.until_date !== undefined ? input.until_date : existing.until_date,
-      reminder_minutes:
-        input.reminder_minutes !== undefined
-          ? input.reminder_minutes
-          : existing.reminder_minutes,
+    const {data: existing,error: readError} = await this.adminClient.from("careplan_calendar_events").select("*").eq("id",eventId).eq("user_id",userId).maybeSingle<CalendarEventRecord>();
+    if (readError) throw new Error(`Failed to load calendar event: ${readError.message}`);
+    if (!existing) throw new NotFoundError("ไม่พบกิจกรรมในปฏิทินที่ต้องการแก้ไข");
+    const scope = input.edit_scope ?? "all";
+    const scoped = existing.recurrence !== "never" && scope !== "all";
+    if (scoped) assertCalendarOccurrence(existing,input.occurrence_date);
+    const start = input.start_date ?? (scoped ? input.occurrence_date! : existing.start_date);
+    const normalized = normalizeCalendarEventInput({
+      ...existing,...input,event_type: input.event_type ?? existing.event_type ?? "general",
+      start_date: start,
+      end_date: input.end_date ?? addDays(start,diffCalendarDays(existing.start_date,existing.end_date)),
+      recurrence: scoped && scope === "single" ? "never" : input.recurrence ?? existing.recurrence,
+      until_date: scoped && scope === "single" ? null : input.until_date !== undefined ? input.until_date : existing.until_date,
     });
-
-    const { data: updated, error: updErr } = await this.adminClient
-      .from("careplan_calendar_events")
-      .update(normalizedAll)
-      .eq("id", eventId)
-      .eq("user_id", userId)
-      .select("*")
-      .single<CalendarEventRecord>();
-
-    if (updErr || !updated) {
-      throw new Error(`Failed to update calendar event: ${updErr?.message}`);
-    }
-    return { event: updated };
+    const {data,error} = await this.adminClient.rpc("careplan_change_calendar_event",{
+      p_user_id:userId,p_event_id:eventId,p_action:"update",p_scope:scope,
+      p_occurrence_date:input.occurrence_date ?? null,p_fields:normalized,p_expected_updated_at:existing.updated_at,
+    });
+    if (error) throw new ValidationError(`ไม่สามารถแก้ไขกิจกรรมได้: ${error.message}`);
+    return data as {event:CalendarEventRecord;split_event?:CalendarEventRecord};
   }
 
-  async deleteCalendarEvent(
-    userId: string,
-    eventId: string,
-    options?: {
-      delete_scope?: "all" | "single";
-      occurrence_date?: string;
-    }
-  ): Promise<{ deleted: true }> {
+  async deleteCalendarEvent(userId: string,eventId: string,options?: {delete_scope?: "all" | "single" | "future";occurrence_date?:string}): Promise<{deleted:true}> {
     await this.requireBootstrap(userId);
-    const { data: existing } = await this.adminClient
-      .from("careplan_calendar_events")
-      .select("*")
-      .eq("id", eventId)
-      .maybeSingle<CalendarEventRecord>();
-
-    if (!existing) {
-      throw new NotFoundError("ไม่พบกิจกรรมในปฏิทินที่ต้องการลบ");
-    }
-    if (existing.user_id !== userId) {
-      throw new ForbiddenError("คุณไม่มีสิทธิ์ลบกิจกรรมของผู้อื่น");
-    }
-
-    if (
-      options?.delete_scope === "single" &&
-      existing.recurrence !== "never" &&
-      options.occurrence_date
-    ) {
-      if (!isValidDateString(options.occurrence_date)) {
-        throw new ValidationError("รูปแบบวันที่ไม่ถูกต้อง (YYYY-MM-DD)");
-      }
-      const existingExcluded = Array.isArray(existing.excluded_dates)
-        ? existing.excluded_dates
-        : [];
-      const nextExcluded = existingExcluded.includes(options.occurrence_date)
-        ? existingExcluded
-        : [...existingExcluded, options.occurrence_date];
-      const { error } = await this.adminClient
-        .from("careplan_calendar_events")
-        .update({ excluded_dates: nextExcluded })
-        .eq("id", eventId)
-        .eq("user_id", userId);
-      if (error) {
-        throw new Error(`Failed to exclude single occurrence: ${error.message}`);
-      }
-      return { deleted: true };
-    }
-
-    const { error } = await this.adminClient
-      .from("careplan_calendar_events")
-      .delete()
-      .eq("id", eventId)
-      .eq("user_id", userId);
-    if (error) {
-      throw new Error(`Failed to delete calendar event: ${error.message}`);
-    }
-    return { deleted: true };
+    const {data: existing,error: readError} = await this.adminClient.from("careplan_calendar_events").select("*").eq("id",eventId).eq("user_id",userId).maybeSingle<CalendarEventRecord>();
+    if (readError) throw new Error(`Failed to load calendar event: ${readError.message}`);
+    if (!existing) throw new NotFoundError("ไม่พบกิจกรรมในปฏิทินที่ต้องการลบ");
+    const scope = options?.delete_scope ?? "all";
+    if (scope !== "all" && existing.recurrence !== "never") assertCalendarOccurrence(existing,options?.occurrence_date);
+    const {error} = await this.adminClient.rpc("careplan_change_calendar_event",{
+      p_user_id:userId,p_event_id:eventId,p_action:"delete",p_scope:scope,
+      p_occurrence_date:options?.occurrence_date ?? null,p_fields:null,p_expected_updated_at:existing.updated_at,
+    });
+    if (error) throw new ValidationError(`ไม่สามารถลบกิจกรรมได้: ${error.message}`);
+    return {deleted:true};
   }
 }

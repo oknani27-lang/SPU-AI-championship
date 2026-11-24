@@ -297,9 +297,11 @@ export interface TextToTaskExtractedItem {
   is_fixed_time: boolean;
   is_medically_prescribed: boolean;
   assumption_note?: string;
+  depends_on_temp_id?: string | null;
 }
 
 export interface TextToTaskResponse {
+  fallback_reason?: string;
   raw_text: string;
   extracted_tasks: TextToTaskExtractedItem[];
   missing_info_questions: string[];
@@ -325,6 +327,7 @@ export interface SessionState {
 export type CalendarEventRecurrence = "never" | "daily" | "weekly" | "monthly";
 
 export interface CalendarEventRecord {
+  event_type?: "general" | "doctor";
   id: string;
   user_id: string;
   title: string;
@@ -343,6 +346,7 @@ export interface CalendarEventRecord {
 }
 
 export interface CalendarEventOccurrence {
+  event_type?: "general" | "doctor";
   occurrence_key: string; // `${event_id}:${occurrence_date}`
   event_id: string;
   occurrence_date: string; // "YYYY-MM-DD"
@@ -358,6 +362,7 @@ export interface CalendarEventOccurrence {
 }
 
 export interface CreateCalendarEventInput {
+  event_type?: "general" | "doctor";
   title: string;
   description?: string;
   start_date: string;
@@ -371,6 +376,7 @@ export interface CreateCalendarEventInput {
 }
 
 export interface UpdateCalendarEventInput {
+  event_type?: "general" | "doctor";
   title?: string;
   description?: string;
   start_date?: string;

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useSession } from "@/components/care/SessionContext";
+import { PushNotificationControl } from "@/components/care/PushNotificationControl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -444,10 +445,11 @@ function SettingsContent() {
               </div>
               <p className="text-xs text-[#66736B] leading-relaxed">
                 การแจ้งเตือนบนเบราว์เซอร์ต้องได้รับอนุญาตจากคุณ
-                และการแจ้งเตือนอัตโนมัติจะยังคงทำงานผ่านระบบหลังบ้านแม้ปิดแท็บเบราว์เซอร์
+                การอนุญาตอย่างเดียวรองรับการแจ้งเตือนเมื่อเปิดเว็บ ส่วนกิจกรรมปฏิทินเมื่อปิดเว็บต้องเปิด Push ด้านล่างและตั้งค่า worker
               </p>
             </div>
 
+            <PushNotificationControl />
             <Switch
               checked={remindersEnabled}
               onCheckedChange={setRemindersEnabled}

@@ -4,13 +4,17 @@
   "private": true,
   "description": "CarePlan — AI Weekly Care Scheduler for Home Caregivers of Older Adults (60+)",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
+    "dev:webpack": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint src tests",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "calendar:worker": "tsx scripts/calendar-worker.ts",
+    "test:features": "node scripts/feature-smoke.cjs",
+    "test:aftercare-ui": "node scripts/aftercare-smoke.cjs"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -24,6 +28,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.0.2",
+    "tsx": "4.23.15",
+    "web-push": "4.0.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {
@@ -31,6 +37,7 @@
     "@types/node": "^22.13.10",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
+    "@types/web-push": "3.6.4",
     "eslint": "^9.22.0",
     "eslint-config-next": "^15.2.4",
     "tailwindcss": "^4.0.14",

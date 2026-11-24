@@ -220,7 +220,7 @@ describe("CarePlan Backend, Domain Invariants, AI & Smart Reminders", () => {
 
     // Missing info questions & assumptions detected
     expect(response.assumptions.length).toBeGreaterThan(0);
-    expect(response.missing_info_questions.some((q) => q.includes("พาเดิน"))).toBe(
+    expect(response.assumptions.some((q) => q.includes("พาเดิน"))).toBe(
       true
     );
   });
@@ -279,7 +279,8 @@ describe("CarePlan Backend, Domain Invariants, AI & Smart Reminders", () => {
     ]);
     expect(multi.extracted_tasks[3].is_medically_prescribed).toBe(true);
     expect(multi.extracted_tasks[4].day_of_week).toBe(3);
-    expect(multi.missing_info_questions.length).toBeGreaterThan(0);
+    expect(multi.extracted_tasks[4].assumption_note).toContain("ยังไม่ได้ระบุเวลา");
+    expect(multi.missing_info_questions).toEqual([]); // Flexible chores do not require an exact time.
   });
 
   // =========================================================================

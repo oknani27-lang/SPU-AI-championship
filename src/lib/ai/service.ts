@@ -14,6 +14,7 @@ import {
   type TextToTaskResponse,
 } from "@/types/careplan";
 import { callGeminiJson } from "@/lib/ai/gemini";
+import { scheduleProblem } from "@/lib/ai/schedule-validation";
 import {
   aiScheduleGeminiOutputSchema,
   dailySummaryGeminiOutputSchema,
@@ -24,6 +25,9 @@ import {
   hhmmToMinutes,
   isValidHHMM,
   minutesToHhmm,
+  getThaiDayOfWeek,
+  getThaiTodayDate,
+  addDays,
 } from "@/lib/timezone";
 
 export const MEDICAL_SAFETY_NOTE =
@@ -44,7 +48,6 @@ const MEDICAL_KEYWORDS = [
   "กินยา",
   "ทานยา",
   "ป้อนยา",
-  "ยา",
   "ฉีดอินซูลิน",
   "อินซูลิน",
   "ฉีดยา",
@@ -65,7 +68,7 @@ const MEDICAL_KEYWORDS = [
 
 function isMedicalTitle(text: string): boolean {
   const lower = text.toLowerCase();
-  return MEDICAL_KEYWORDS.some((kw) => lower.includes(kw));
+  return MEDICAL_KEYWORDS.some((kw) => lower.includes(kw)) || /รับประทานยา|ให้ยา|เตรียมยา|ยาตามฉลาก|ยาหลังอาหาร/.test(lower);
 }
 
 function estimateDefaultDuration(title: string): number {
@@ -171,7 +174,7 @@ function findNextNonOverlappingStart(
       candidate = slot.end + 10; // 10-min gentle transition buffer
     }
   }
-  return Math.min(22 * 60, candidate);
+  return candidate;
 }
 
 function buildDeterministicSchedule(
@@ -196,7 +199,7 @@ function buildDeterministicSchedule(
         `ประมาณระยะเวลาสำหรับ "${t.title}" เป็น ${duration} นาที`
       );
     }
-    if (!preferred) {
+    if (!preferred && medical) {
       missingInfoQuestions.push(
         medical
           ? `งาน "${t.title}" เป็นงานทางการแพทย์ กรุณาระบุเวลาที่แพทย์กำหนดให้ชัดเจน`
@@ -230,7 +233,8 @@ function buildDeterministicSchedule(
     }
   }
 
-  let rollingCursor = 8 * 60; // default start at 08:00
+  const windowMatch = tasks.map(task => task.description ?? "").join("\n").match(/เริ่มดูแล[^\n]*?(\d{2}:\d{2})\s*ถึง\s*(\d{2}:\d{2})/);
+  const rollingCursor = windowMatch ? hhmmToMinutes(windowMatch[1]) : 8 * 60;
   const scheduledMap = new Map<string, ProposedScheduleTask>();
 
   for (const t of ordered) {
@@ -287,7 +291,7 @@ function buildDeterministicSchedule(
 
     const endMinutes = startMinutes + t.duration_minutes;
     endTimeById.set(t.temp_id, endMinutes);
-    rollingCursor = Math.max(rollingCursor, endMinutes + 15);
+    // Search each flexible task from the day's start; occupied slots enforce spacing.
 
     scheduledMap.set(t.temp_id, {
       temp_id: t.temp_id,
@@ -306,6 +310,9 @@ function buildDeterministicSchedule(
   const proposedTasks = Array.from(scheduledMap.values()).sort((a, b) =>
     a.scheduled_time.localeCompare(b.scheduled_time)
   );
+  const problem = scheduleProblem(proposedTasks);
+  if (problem) missingInfoQuestions.push(problem);
+  if (windowMatch && proposedTasks.some(task => hhmmToMinutes(task.scheduled_time) < hhmmToMinutes(windowMatch[1]) || hhmmToMinutes(task.scheduled_time) + task.duration_minutes > hhmmToMinutes(windowMatch[2]))) missingInfoQuestions.push("มีงานอยู่นอกช่วงดูแล กรุณาปรับเวลา/ระยะเวลาก่อนบันทึก");
 
   const dayName = THAI_DAY_NAMES[dayOfWeek].full;
   return {
@@ -324,6 +331,7 @@ export async function proposeDailySchedule(params: {
   careRecipientName?: string;
   forceFallback?: boolean;
 }): Promise<{
+  failure_reason?: string;
   response: AiScheduleProposalResponse;
   telemetry: {
     provider: string;
@@ -345,8 +353,9 @@ export async function proposeDailySchedule(params: {
 2. ห้ามเปลี่ยนเวลาของงานที่ is_medically_prescribed = true หรือ is_fixed_time = true ที่มี preferred_time ระบุอยู่แล้วเด็ดขาด
 3. ต้องจัดลำดับงานที่มี depends_on_temp_id ให้เริ่มหลังจากงานก่อนหน้าเสร็จสิ้น
 4. ห้ามให้คำแนะนำทางการแพทย์หรือปรับขนาดยา
-5. หากงานใดไม่ได้ระบุเวลา (preferred_time) หรือระยะเวลา (duration_minutes) ให้ระบุสมมติฐานใน assumptions และคำถามเพิ่มเติมใน missing_info_questions เป็นภาษาไทยที่สุภาพ
-6. เขียน rationale สั้นๆ อ่านง่ายเป็นภาษาไทยสำหรับแต่ละงาน`;
+5. งานทั่วไปที่ไม่ได้ระบุเวลาให้จัดในช่องว่าง ไม่ต้องถามเวลาทุกรายการ ระบุสมมติฐานเมื่อประมาณระยะเวลา ถ้าข้อมูลจำเป็นขาดจึงถามเพิ่มเติม
+6. เขียน rationale สั้นๆ อ่านง่ายเป็นภาษาไทยสำหรับแต่ละงาน
+7. ยึดเงื่อนไขใน description เช่น ช่วงดูแล อาหารต้องพร้อมก่อนมื้ออาหาร และช่วงเว้นพัก ห้ามจัดงานทับกัน`;
 
   const userPrompt = JSON.stringify({
     day_of_week: params.day_of_week,
@@ -378,15 +387,19 @@ export async function proposeDailySchedule(params: {
     systemInstruction,
     userPrompt,
     schema: aiScheduleGeminiOutputSchema,
+    timeoutMs: 20000,
+    thinkingLevel: "minimal",
+    maxOutputTokens: 8192,
     forceFallback: params.forceFallback,
   });
 
   if (geminiRes.ok) {
     // Enforce medical/fixed-time immutability even on AI output!
     const inputById = new Map(params.tasks.map((t) => [t.temp_id, t]));
-    const allInputsPresent = params.tasks.every((t) =>
-      geminiRes.data.proposed_tasks.some((p) => p.temp_id === t.temp_id)
-    );
+    const proposedIds = geminiRes.data.proposed_tasks.map(task => task.temp_id);
+    const allInputsPresent = inputById.size === params.tasks.length &&
+      proposedIds.length === params.tasks.length && new Set(proposedIds).size === proposedIds.length &&
+      proposedIds.every(id => inputById.has(id));
 
     if (allInputsPresent) {
       const safeguardedTasks: ProposedScheduleTask[] =
@@ -396,7 +409,7 @@ export async function proposeDailySchedule(params: {
             const isMed =
               Boolean(orig?.is_medically_prescribed) ||
               item.is_medically_prescribed;
-            const isFixed = Boolean(orig?.is_fixed_time) || item.is_fixed_time;
+            const isFixed = isMed || Boolean(orig?.is_fixed_time) || item.is_fixed_time;
             const lockedTime =
               (isMed || isFixed) &&
               orig?.preferred_time &&
@@ -406,46 +419,57 @@ export async function proposeDailySchedule(params: {
 
             return {
               ...item,
-              description: item.description ?? "",
+              title: orig!.title,
+              description: orig!.description ?? "",
+              duration_minutes: orig?.duration_minutes ?? item.duration_minutes,
+              priority: isMed ? "medical_critical" : item.priority,
               scheduled_time: lockedTime,
               is_medically_prescribed: isMed,
               is_fixed_time: isFixed,
-              depends_on_temp_id:
-                orig?.depends_on_temp_id ?? item.depends_on_temp_id ?? null,
+              depends_on_temp_id: orig?.depends_on_temp_id ?? null,
             };
           })
           .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
 
-      const mergedQuestions = Array.from(
-        new Set([
-          ...(geminiRes.data.missing_info_questions ?? []),
-          ...deterministic.missing_info_questions,
-        ])
-      );
+      const byId = new Map(safeguardedTasks.map(task => [task.temp_id, task]));
+      const validOrder = safeguardedTasks.every(task => {
+        if (!task.depends_on_temp_id) return true;
+        const previous = byId.get(task.depends_on_temp_id);
+        return previous && hhmmToMinutes(task.scheduled_time) >= hhmmToMinutes(previous.scheduled_time) + previous.duration_minutes;
+      });
+      if (validOrder && !scheduleProblem(safeguardedTasks)) {
+        const mergedQuestions = Array.from(
+          new Set([
+            ...(geminiRes.data.missing_info_questions ?? []),
+            ...deterministic.missing_info_questions,
+          ])
+        );
 
-      return {
-        response: {
-          day_of_week: params.day_of_week,
-          proposed_tasks: safeguardedTasks,
-          assumptions: geminiRes.data.assumptions ?? [],
-          missing_info_questions: mergedQuestions,
-          medical_safety_note: MEDICAL_SAFETY_NOTE,
-          summary_note: geminiRes.data.summary_note,
-          used_fallback: false,
-          provider: `gemini:${geminiRes.model}`,
-        },
-        telemetry: {
-          provider: "gemini",
-          model: geminiRes.model,
-          used_fallback: false,
-          status: "success",
-          latency_ms: geminiRes.latencyMs,
-        },
-      };
+        return {
+          response: {
+            day_of_week: params.day_of_week,
+            proposed_tasks: safeguardedTasks,
+            assumptions: geminiRes.data.assumptions ?? [],
+            missing_info_questions: mergedQuestions,
+            medical_safety_note: MEDICAL_SAFETY_NOTE,
+            summary_note: geminiRes.data.summary_note,
+            used_fallback: false,
+            provider: `gemini:${geminiRes.model}`,
+          },
+          telemetry: {
+            provider: "gemini",
+            model: geminiRes.model,
+            used_fallback: false,
+            status: "success",
+            latency_ms: geminiRes.latencyMs,
+          },
+        };
+      }
     }
   }
 
   return {
+    failure_reason: geminiRes.ok ? "ai_output_validation_failed" : geminiRes.reason,
     response: {
       ...deterministic,
       used_fallback: true,
@@ -617,7 +641,7 @@ export function parseThaiTextDeterministically(
 ): Omit<TextToTaskResponse, "used_fallback" | "provider"> {
   const normalized = rawText.replace(/\r\n/g, "\n").trim();
   const lines = normalized
-    .split(/\n+|;/)
+    .split(/\n+|;|\s+และ(?=ช่วย|ตาก|เตรียม)/)
     .map((l) => l.trim())
     .filter(Boolean);
 
@@ -626,6 +650,8 @@ export function parseThaiTextDeterministically(
   const missingInfoQuestions: string[] = [];
 
   for (const line of lines) {
+    if (/^พรุ่งนี้/.test(line)) currentDay = getThaiDayOfWeek(addDays(getThaiTodayDate(), 1));
+    else if (/^วันนี้/.test(line)) currentDay = getThaiDayOfWeek(getThaiTodayDate());
     // Track day mentions inside this line
     const dayMentions: Array<{ index: number; day: DayOfWeek }> = [];
     let dm: RegExpExecArray | null;
@@ -637,7 +663,43 @@ export function parseThaiTextDeterministically(
       currentDay = dayMentions[0].day;
     }
 
+    // Context headers are constraints, never actionable tasks.
+    if (/^ขอ.*พัก.*เช้า.*บ่าย/.test(line)) {
+      const duration = Number(line.match(/(\d+)\s*นาที/)?.[1] ?? 15);
+      for (const [period, time] of [["เช้า", "09:45"], ["บ่าย", "14:15"]]) {
+        extracted.push({ temp_id: `txt-${extracted.length + 1}`, day_of_week: currentDay, title: `พักผู้ดูแล (${period})`, description: line, preferred_time: time, duration_minutes: Math.min(720, Math.max(5, duration)), priority: "medium", is_fixed_time: false, is_medically_prescribed: false, assumption_note: "เสนอเวลาเริ่มพัก สามารถปรับได้" });
+      }
+      continue;
+    }
+    if (/^(?:พรุ่งนี้|วันนี้)?\s*เริ่มดูแล/.test(line)) {
+      continue;
+    }
     const timeTokens = findTimeTokens(line);
+    const explicitDuration = line.match(/(\d+)\s*(นาที|ชั่วโมง)/);
+    const durationFromText = explicitDuration ? Number(explicitDuration[1]) * (explicitDuration[2] === "ชั่วโมง" ? 60 : 1) : undefined;
+    if (/ก่อนเที่ยง/.test(line) && timeTokens.length === 1) {
+      const duration = durationFromText ?? 40;
+      extracted.push({ temp_id: `txt-${extracted.length + 1}`, day_of_week: currentDay, title: cleanTaskTitle(line.split(/\d+\s*(?:นาที|ชั่วโมง)/)[0]).slice(0, 200), description: line, preferred_time: minutesToHhmm(720 - duration), duration_minutes: duration, priority: "high", is_fixed_time: true, is_medically_prescribed: false });
+      continue;
+    }
+    if (/เว้นช่วง|ขอให้เว้น/.test(line) && timeTokens.length === 2) {
+      const duration = hhmmToMinutes(timeTokens[1].hhmm) - hhmmToMinutes(timeTokens[0].hhmm);
+      if (duration > 0) {
+        extracted.push({ temp_id: `txt-${extracted.length + 1}`, day_of_week: currentDay, title: "เว้นช่วงพัก", description: line, preferred_time: timeTokens[0].hhmm, duration_minutes: duration, priority: "high", is_fixed_time: true, is_medically_prescribed: false });
+        continue;
+      }
+    }
+
+    // A time after a task title belongs to that task; do not discard the prefix.
+    if (timeTokens.length === 1 && timeTokens[0].index > 0 && !/^(?:วัน|ตอน|ช่วง|เวลา)/.test(line)) {
+      const tok = timeTokens[0];
+      const title = cleanTaskTitle(line.slice(0, tok.index)).replace(/(?:เวลา|ใช้เวลา)\s*$/, "").trim();
+      if (title) {
+        const medical = isMedicalTitle(title);
+        extracted.push({ temp_id: `txt-${extracted.length + 1}`, day_of_week: currentDay, title: title.slice(0, 200), description: line, preferred_time: tok.hhmm, duration_minutes: Math.min(720, Math.max(5, durationFromText ?? estimateDefaultDuration(title))), priority: medical ? "medical_critical" : "high", is_fixed_time: true, is_medically_prescribed: medical });
+        continue;
+      }
+    }
 
     if (timeTokens.length === 0) {
       // Split by comma or "แล้ว" when no explicit times exist
@@ -648,22 +710,21 @@ export function parseThaiTextDeterministically(
 
       for (const frag of fragments) {
         const medical = isMedicalTitle(frag);
-        const duration = estimateDefaultDuration(frag);
+        const duration = Math.min(720, Math.max(5, durationFromText ?? estimateDefaultDuration(frag)));
         extracted.push({
           temp_id: `txt-${extracted.length + 1}`,
           day_of_week: currentDay,
-          title: frag,
-          description: "",
+          title: frag.replace(/\s*\d+\s*(?:นาที|ชั่วโมง).*$/, "").slice(0, 200),
+          description: frag,
           preferred_time: null,
           duration_minutes: duration,
           priority: medical ? "medical_critical" : "medium",
           is_fixed_time: medical,
           is_medically_prescribed: medical,
           assumption_note: `ยังไม่ได้ระบุเวลา (ประมาณระยะเวลา ${duration} นาที)`,
+          depends_on_temp_id: /หลังซัก/.test(frag) ? [...extracted].reverse().find(task => /ซัก/.test(task.title) && task.day_of_week === currentDay)?.temp_id ?? null : /หลังอาหารเช้า/.test(frag) ? [...extracted].reverse().find(task => /รับประทานอาหาร|กิน.*เช้า/.test(task.title) && task.day_of_week === currentDay)?.temp_id ?? null : null,
         });
-        missingInfoQuestions.push(
-          `งาน "${frag}" ยังไม่ได้ระบุเวลาที่ชัดเจน กรุณาระบุเวลาที่ต้องการ`
-        );
+        if (medical) missingInfoQuestions.push(`ระบุเวลาตามแพทย์: ${frag.slice(0, 80)}`);
       }
       continue;
     }
@@ -718,7 +779,7 @@ export function parseThaiTextDeterministically(
   }
 
   // Fallback if input was short and nothing matched cleanly
-  if (extracted.length === 0 && normalized.length > 0) {
+  if (extracted.length === 0 && normalized.length > 0 && !/เริ่มดูแล/.test(normalized)) {
     const title = cleanTaskTitle(normalized) || normalized.slice(0, 120);
     const medical = isMedicalTitle(title);
     extracted.push({
@@ -738,6 +799,23 @@ export function parseThaiTextDeterministically(
     );
   }
 
+  const windowContext = lines.find(line => /เริ่มดูแล.*ถึง/.test(line));
+  for (const task of extracted) {
+    if (windowContext) task.description = `${task.description}\n${windowContext}`.trim().slice(0, 1000);
+    if (/เตรียมอาหาร/.test(task.title) && !task.preferred_time) {
+      const meal = extracted.find(other => other !== task && other.day_of_week === task.day_of_week && /รับประทานอาหาร/.test(other.title) && other.preferred_time && ["เช้า", "กลางวัน", "เย็น"].some(period => task.title.includes(period) && (other.title.includes(period) || (period === "เย็น" && other.preferred_time! >= "16:00") || (period === "เช้า" && other.preferred_time! < "10:00"))));
+      if (meal?.preferred_time) {
+        let end = hhmmToMinutes(meal.preferred_time);
+        const occupied = extracted.filter(other => other !== task && other !== meal && other.day_of_week === task.day_of_week && other.preferred_time && other.is_fixed_time).sort((a, b) => b.preferred_time!.localeCompare(a.preferred_time!));
+        for (const other of occupied) {
+          const start = hhmmToMinutes(other.preferred_time!);
+          if (end - task.duration_minutes < start + other.duration_minutes && end > start) end = start;
+        }
+        task.preferred_time = minutesToHhmm(end - task.duration_minutes); task.is_fixed_time = true; meal.depends_on_temp_id = task.temp_id;
+        task.assumption_note = "เสนอเวลาเตรียมให้เสร็จก่อนมื้ออาหารและไม่ทับกิจกรรมที่ระบุ";
+      }
+    }
+  }
   return {
     raw_text: rawText,
     extracted_tasks: extracted,
@@ -750,6 +828,7 @@ export async function parseTextToTasks(params: {
   default_day_of_week?: DayOfWeek;
   forceFallback?: boolean;
 }): Promise<{
+  failure_reason?: string;
   response: TextToTaskResponse;
   telemetry: {
     provider: string;
@@ -768,10 +847,18 @@ export async function parseTextToTasks(params: {
 2. แปลงคำบอกเวลาภาษาไทยเป็นรูปแบบ 24 ชั่วโมง HH:mm ให้ถูกต้อง เช่น "8 โมง" -> "08:00", "บ่ายสอง" -> "14:00", "2 ทุ่ม" -> "20:00", "ตี 5" -> "05:00", "เที่ยง" -> "12:00", "6 โมงเย็น" -> "18:00"
 3. ตรวจจับวันในสัปดาห์ (1=วันจันทร์ ... 7=วันอาทิตย์) หากไม่ระบุให้ใช้ default_day_of_week
 4. หากเป็นงานเกี่ยวกับยา การวัดความดัน การฉีดอินซูลิน หรือพาไปหาหมอ ให้ตั้ง is_medically_prescribed = true, is_fixed_time = true, priority = "medical_critical"
-5. หากรายการใดไม่มีเวลาระบุ ให้ preferred_time = null และเพิ่มคำถามใน missing_info_questions`;
+5. งานที่ยืดหยุ่นได้ให้ preferred_time = null ไม่ต้องถามเวลาทุกรายการ ถามเฉพาะข้อมูลจำเป็นที่ขาด
+6. แยกทุกกิจกรรมเป็นคนละรายการ เช่น ซักผ้าและตากผ้า หรือเตรียมอาหารและช่วยรับประทานอาหาร ใช้ระยะเวลาที่ระบุจริง ไม่ใช้ค่าประมาณถ้าระบุแล้ว
+7. เก็บลำดับงานด้วย depends_on_temp_id (รหัสงานก่อนหน้า หรือ null) เช่น อาบน้ำหลังอาหารเช้า ตากผ้าหลังซัก อย่าสร้าง dependency ข้ามวัน
+8. ช่วงห้ามจัดงานให้สร้างรายการเวลาคงที่ชื่อ เว้นช่วงพัก พร้อมเวลาเริ่มและระยะเวลาจริง เพื่อกันช่วงนั้นไว้ การพักเช้าและบ่ายให้แยกสองรายการ
+9. ประโยคบอกช่วงดูแล เช่น เริ่มดูแล 07:00 ถึง 18:00 เป็นเงื่อนไข ไม่ใช่งาน เก็บเงื่อนไขใน description ของงานที่เกี่ยวข้อง ห้ามสร้างงานชื่อเริ่มดูแล
+10. เวลาที่ตามหลังชื่องานเป็นเวลาเริ่มของงานนั้น ไม่ใช่ชื่อของงานถัดไป ชื่องานต้องสั้น ไม่ใส่เงื่อนไขทั้งประโยค
+11. วันนี้และพรุ่งนี้อ้างอิง today_day_of_week ไม่ใช่ default_day_of_week; หากคำสั่งมีเงื่อนไขที่ยังจัดแทนไม่ได้ ให้แจ้งสั้นๆ ใน missing_info_questions ห้ามอ้างว่ารองรับแล้ว
+12. ใช้ description สั้นไม่เกิน 100 ตัวอักษร เฉพาะเงื่อนไขที่จำเป็น ไม่ต้องคัดลอกข้อความซ้ำ ไม่ต้องส่ง assumption_note`;
 
   const userPrompt = JSON.stringify({
     text: params.text,
+    today_day_of_week: getThaiDayOfWeek(getThaiTodayDate()),
     default_day_of_week: defaultDay,
     required_json_shape: {
       extracted_tasks: [
@@ -780,12 +867,12 @@ export async function parseTextToTasks(params: {
           day_of_week: 1,
           title: "ชื่องานภาษาไทยกระชับ",
           description: "",
-          preferred_time: "08:00 or null",
+          preferred_time: null,
           duration_minutes: 30,
           priority: "low | medium | high | medical_critical",
           is_fixed_time: true,
           is_medically_prescribed: false,
-          assumption_note: "optional Thai note",
+          depends_on_temp_id: null,
         },
       ],
       missing_info_questions: ["string"],
@@ -796,6 +883,9 @@ export async function parseTextToTasks(params: {
     systemInstruction,
     userPrompt,
     schema: textToTaskGeminiOutputSchema,
+    timeoutMs: 25000,
+    thinkingLevel: "minimal",
+    maxOutputTokens: 8192,
     forceFallback: params.forceFallback,
   });
 
@@ -810,13 +900,14 @@ export async function parseTextToTasks(params: {
             temp_id: item.temp_id || `txt-${idx + 1}`,
             day_of_week: safeDay,
             title: item.title,
-            description: item.description ?? "",
+            description: [item.description ?? "", params.text.split(/\r?\n/).find(line => /เริ่มดูแล.*ถึง/.test(line)) ?? ""].filter(Boolean).join("\n").slice(0, 1000),
             preferred_time: item.preferred_time,
             duration_minutes: item.duration_minutes ?? estimateDefaultDuration(item.title),
             priority: med ? "medical_critical" : (item.priority ?? "medium"),
-            is_fixed_time: item.is_fixed_time ?? (med && Boolean(item.preferred_time)),
+            is_fixed_time: med || Boolean(item.is_fixed_time),
             is_medically_prescribed: med,
-            assumption_note: item.assumption_note,
+            assumption_note: item.assumption_note ?? undefined,
+            depends_on_temp_id: item.depends_on_temp_id && geminiRes.data.extracted_tasks.some(parent => parent.temp_id === item.depends_on_temp_id && parent.temp_id !== item.temp_id && parent.day_of_week === item.day_of_week) ? item.depends_on_temp_id : null,
           };
         }),
         missing_info_questions: geminiRes.data.missing_info_questions ?? [],
@@ -834,6 +925,7 @@ export async function parseTextToTasks(params: {
   }
 
   return {
+    failure_reason: geminiRes.ok ? "ai_output_validation_failed" : geminiRes.reason,
     response: {
       ...deterministic,
       used_fallback: true,
@@ -910,6 +1002,7 @@ export async function buildDailySummary(params: {
   careRecipientName: string;
   forceFallback?: boolean;
 }): Promise<{
+  failure_reason?: string;
   summaryInput: Omit<DailySummaryRecord, "id" | "user_id" | "generated_at">;
   telemetry: {
     provider: string;
@@ -974,6 +1067,7 @@ export async function buildDailySummary(params: {
   }
 
   return {
+    failure_reason: geminiRes.ok ? "ai_output_validation_failed" : geminiRes.reason,
     summaryInput: {
       summary_date: params.date,
       metrics: params.metrics,
@@ -1141,6 +1235,7 @@ export async function buildRestSuggestions(params: {
   >;
   forceFallback?: boolean;
 }): Promise<{
+  failure_reason?: string;
   suggestions: Array<
     Omit<RestSuggestionRecord, "id" | "user_id" | "created_at" | "updated_at">
   >;
@@ -1161,6 +1256,7 @@ export async function buildRestSuggestions(params: {
 
   if (gaps.length === 0) {
     return {
+      failure_reason: "no_available_gaps",
       suggestions: [],
       telemetry: {
         provider: "deterministic_fallback",
@@ -1203,10 +1299,18 @@ export async function buildRestSuggestions(params: {
     systemInstruction,
     userPrompt,
     schema: restSuggestionsGeminiOutputSchema,
+    timeoutMs: 25000,
     forceFallback: params.forceFallback,
   });
 
-  if (geminiRes.ok && geminiRes.data.suggestions.length > 0) {
+  const validRestOutput = geminiRes.ok && geminiRes.data.suggestions.length > 0 && (() => {
+    const intervals = geminiRes.data.suggestions.map(item => ({ start: hhmmToMinutes(item.gap_start), end: hhmmToMinutes(item.gap_end), duration: item.duration_minutes })).sort((a,b) => a.start-b.start);
+    if (params.careRecipient.requires_supervision && geminiRes.data.suggestions.some(item => /ออกจากบ้าน|นอกบ้าน|ไปเที่ยว|เดินห้าง|ปล่อย.{0,30}(?:ลำพัง|คนเดียว)|ทิ้ง.{0,30}(?:ลำพัง|คนเดียว)/.test(item.activity_title + " " + item.description))) return false;
+    return intervals.every((item,index) => item.end > item.start && item.end-item.start === item.duration &&
+      gaps.some(gap => item.start >= hhmmToMinutes(gap.gap_start) && item.end <= hhmmToMinutes(gap.gap_end)) &&
+      (!index || item.start >= intervals[index-1].end));
+  })();
+  if (geminiRes.ok && validRestOutput) {
     const safeSuggestions = geminiRes.data.suggestions.map((s) => ({
       suggestion_date: params.date,
       gap_start: s.gap_start,
@@ -1214,10 +1318,9 @@ export async function buildRestSuggestions(params: {
       duration_minutes: s.duration_minutes,
       activity_title: s.activity_title.trim(),
       description: s.description.trim(),
-      supervision_safety_note:
-        s.supervision_safety_note.trim().length >= 15
-          ? s.supervision_safety_note.trim()
-          : DEFAULT_SUPERVISION_SAFETY_NOTE,
+      supervision_safety_note: params.careRecipient.requires_supervision
+        ? DEFAULT_SUPERVISION_SAFETY_NOTE
+        : s.supervision_safety_note.trim().length >= 15 ? s.supervision_safety_note.trim() : DEFAULT_SUPERVISION_SAFETY_NOTE,
       status: "suggested" as const,
     }));
 
@@ -1234,6 +1337,7 @@ export async function buildRestSuggestions(params: {
   }
 
   return {
+    failure_reason: geminiRes.ok ? "ai_output_validation_failed" : geminiRes.reason,
     suggestions: deterministic,
     telemetry: {
       provider: "deterministic_fallback",
