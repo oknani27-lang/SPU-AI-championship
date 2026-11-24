@@ -12,10 +12,12 @@ Sources are deployed through the authenticated Vercel API. Real `.env`, local da
 
 The configured Supabase project is `ngkwsavxyyaeygduzvqc`. Read-only REST probes for `careplan_user_profiles` and `careplan_calendar_events` returned HTTP 404 / PGRST205. The connected Supabase account only exposes another project, which was not modified.
 
-An owner of the intended project should run `supabase/careplan-vercel-setup.sql` once in its SQL Editor. This combines only the four CarePlan migrations in dependency order; do not run unrelated chat/preview migrations. After setup, verify the API tables and account login/registration. Configure Supabase Auth's Site URL and allowed redirects for the deployed URL where required.
+An owner of the intended project should run `supabase/careplan-vercel-setup.sql` once in its SQL Editor. This combines only the five CarePlan migrations in dependency order; do not run unrelated chat/preview migrations. After setup, verify the API tables and account login/registration. Configure Supabase Auth's Site URL and allowed redirects for the deployed URL where required.
 
 Local file Demo mode is intentionally unavailable on Vercel. Its filesystem is not a durable/shared application database. The hosted demo endpoint returns an explanatory 503 instead of attempting to write local user data. The normal local development demo is unchanged.
 
 Notifications additionally require the VAPID settings and worker setup in `docs/PUSH_SETUP.md`. The current Vercel Hobby plan rejected the existing 15-minute cron, so the web deployment does not install a scheduled cron. Use a separately hosted worker/scheduler with a server-only CRON_SECRET, or configure supported scheduling separately. The cron endpoint fails closed until authenticated. Do not infer background push readiness from a successful frontend deployment.
 
 Public access must be verified with a fresh unauthenticated browser, without a temporary share token. Keep normal Careplan account authentication enabled.
+
+If tables exist but the backend reports permission denied, run only `supabase/migrations/20261125000200_careplan_api_grants.sql`. It grants backend access to Careplan tables and restricts the completion RPC to the backend; it does not open user data to anonymous visitors.
