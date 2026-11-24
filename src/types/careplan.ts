@@ -310,6 +310,8 @@ export interface TextToTaskResponse {
 }
 
 export interface SessionState {
+  demo_available?: boolean;
+  live_ready?: boolean;
   authenticated: boolean;
   mode: StorageMode;
   supabase_configured: boolean;

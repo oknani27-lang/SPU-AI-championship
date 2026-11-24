@@ -96,7 +96,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             </Alert>
           )}
 
-          <div className="space-y-3">
+          {session?.demo_available === true && <div className="space-y-3">
             <Button
               size="lg"
               variant="primary"
@@ -110,9 +110,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             <p className="text-xs text-[#66736B] text-center">
               เข้าสู่โหมดสาธิต (Demo Mode — คุณเมย์ / คุณสมใจ) พร้อมตารางตัวอย่างครบ 7 วันทันที
             </p>
-          </div>
+          </div>}
+          {session?.demo_available === false && !session.live_ready && <Alert variant="warning">ระบบออนไลน์กำลังเตรียมเปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบก่อนสมัครบัญชี</Alert>}
 
-          <div className="relative">
+          {session?.demo_available === true && <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t border-[#E3E9E3]" />
             </div>
@@ -121,7 +122,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                 หรือเข้าใช้งานด้วยบัญชีของคุณ
               </span>
             </div>
-          </div>
+          </div>}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <Link

@@ -12,7 +12,7 @@ import { registerAccount } from "@/lib/api-client";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { refreshSession, startDemo } = useSession();
+  const { session, refreshSession, startDemo } = useSession();
 
   const [fullName, setFullName] = React.useState("");
   const [email, setEmail] = React.useState("");
@@ -198,6 +198,7 @@ export default function RegisterPage() {
           </Button>
         </form>
 
+        {session?.demo_available === true && <>
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
             <span className="w-full border-t border-[#E3E9E3]" />
@@ -217,6 +218,8 @@ export default function RegisterPage() {
           <Play className="h-4 w-4" />
           ทดลองใช้งาน Careplan
         </Button>
+
+        </>}
 
         <p className="text-center text-sm text-[#66736B]">
           มีบัญชีอยู่แล้ว?{" "}

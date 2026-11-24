@@ -12,7 +12,7 @@ import { loginAccount } from "@/lib/api-client";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { refreshSession, startDemo } = useSession();
+  const { session, refreshSession, startDemo } = useSession();
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -127,6 +127,7 @@ export default function LoginPage() {
           </Button>
         </form>
 
+        {session?.demo_available === true && <>
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
             <span className="w-full border-t border-[#E3E9E3]" />
@@ -153,6 +154,8 @@ export default function LoginPage() {
             เข้าใช้งานโหมดสาธิต (Demo Mode) พร้อมตารางตัวอย่าง 7 วันทันทีโดยไม่ต้องสมัครสมาชิก
           </p>
         </div>
+
+        </>}
 
         <p className="text-center text-sm text-[#66736B]">
           ยังไม่มีบัญชีใช่ไหม?{" "}
