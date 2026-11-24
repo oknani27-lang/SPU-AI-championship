@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { setSessionCookie } from "@/lib/auth";
+import { getAuthContext, setSessionCookie } from "@/lib/auth";
 import { handleApiError, jsonOk } from "@/lib/http";
-import { getDemoStore } from "@/lib/store";
+import { getDemoStore, getSupabaseStore, isLiveSupabaseReady } from "@/lib/store";
 import { AppError } from "@/lib/errors";
 
 const demoBodySchema = z
@@ -12,7 +12,21 @@ const demoBodySchema = z
 
 export async function POST(request: Request) {
   try {
-    if (process.env.VERCEL === "1") throw new AppError("โหมดสาธิตเก็บข้อมูลในเครื่อง ใช้บน Vercel ไม่ได้ กรุณาเชื่อม Supabase แล้วเข้าสู่ระบบด้วยบัญชีผู้ใช้", 503, "HOSTED_DEMO_UNAVAILABLE");
+    if (process.env.VERCEL === "1") {
+      const origin = request.headers.get("origin");
+      if (request.headers.get("sec-fetch-site") === "cross-site" || (origin && origin !== new URL(request.url).origin)) throw new AppError("ไม่อนุญาตคำขอจากเว็บไซต์อื่น", 403, "INVALID_ORIGIN");
+      const store = getSupabaseStore();
+      if (!store || !await isLiveSupabaseReady()) throw new AppError("ระบบทดลองกำลังเตรียมฐานข้อมูล กรุณาลองใหม่", 503, "HOSTED_DEMO_UNAVAILABLE");
+      const existing = await getAuthContext();
+      if (existing?.mode === "supabase") {
+        const bootstrap = await existing.store.getUserBootstrap(existing.userId);
+        if (bootstrap?.user.email.endsWith("@careplan-demo.invalid")) return jsonOk({ user: bootstrap.user, mode: "supabase" });
+      }
+      const demo = await store.startHostedDemo();
+      const response = jsonOk({ user: demo.user, mode: "supabase" });
+      setSessionCookie(response, { mode: "supabase", access_token: demo.access_token, refresh_token: demo.refresh_token, issued_at: Date.now() });
+      return response;
+    }
     const url = new URL(request.url);
     const resetParam =
       url.searchParams.get("reset") === "1" ||

@@ -536,6 +536,29 @@ export class SupabaseStore implements CarePlanStore {
     );
   }
 
+  async startHostedDemo(): Promise<LoginUserResult & { access_token: string }> {
+    const since = new Date(Date.now() - 3600_000).toISOString();
+    const budget = await this.adminClient.from("careplan_user_profiles").select("id", { count: "exact", head: true }).like("email", "%@careplan-demo.invalid").gte("created_at", since);
+    if (budget.error) throw new Error("ไม่สามารถเตรียมบัญชีทดลองได้");
+    if ((budget.count ?? 0) >= 50) throw new ValidationError("มีผู้ทดลองใช้งานจำนวนมาก กรุณาลองภายหลัง");
+    const email = `${crypto.randomUUID()}@careplan-demo.invalid`;
+    const password = crypto.randomBytes(32).toString("base64url");
+    const created = await this.adminClient.auth.admin.createUser({ email, password, email_confirm: true, app_metadata: { careplan_demo: true } });
+    if (created.error || !created.data.user) throw new Error("สร้างบัญชีทดลองไม่สำเร็จ กรุณาลองใหม่");
+    const userId = created.data.user.id;
+    const bootstrap = await this.ensureUserBootstrap(userId, email, "คุณเมย์ (ทดลอง)", "คุณสมใจ (ข้อมูลสมมติ)", 72);
+    const templates = [1, 2, 3, 4, 5, 6].flatMap(day => [
+      { title: "เตรียมอาหารเช้า (ตัวอย่าง)", scheduled_time: "08:00", duration_minutes: 30 },
+      { title: "ทำความสะอาดห้อง (ตัวอย่าง)", scheduled_time: "10:00", duration_minutes: 30 },
+      { title: "อ่านหนังสือด้วยกัน (ตัวอย่าง)", scheduled_time: "15:00", duration_minutes: 30 },
+    ].map(task => ({ ...task, user_id: userId, weekly_schedule_id: bootstrap.weekly_schedule.id, day_of_week: day, description: "ข้อมูลสมมติสำหรับทดลอง แก้ไขและเพิ่มงานของคุณได้", priority: "medium", is_fixed_time: false, is_medically_prescribed: false, effective_from_date: getThaiTodayDate() })));
+    const seeded = await this.adminClient.from("careplan_recurring_task_templates").insert(templates);
+    if (seeded.error) throw new Error("เตรียมตารางทดลองไม่สำเร็จ กรุณาลองใหม่");
+    const session = await this.loginUser({ email, password });
+    if (!session.access_token) throw new Error("เริ่มบัญชีทดลองไม่สำเร็จ กรุณาลองใหม่");
+    return { ...session, access_token: session.access_token };
+  }
+
   async getUserBootstrap(userId: string): Promise<UserBootstrapData | null> {
     const [profileRes, recipientRes, schedRes, prefRes] = await Promise.all([
       this.adminClient

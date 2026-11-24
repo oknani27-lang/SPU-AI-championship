@@ -13,7 +13,7 @@ export async function GET() {
     if (!ctx) {
       const liveReady = await isLiveSupabaseReady();
       const unauthState: SessionState = {
-        demo_available: process.env.VERCEL !== "1",
+        demo_available: process.env.VERCEL !== "1" || liveReady,
         live_ready: liveReady,
         authenticated: false,
         mode: liveReady ? "supabase" : "demo",
@@ -30,7 +30,7 @@ export async function GET() {
     const bootstrap = await ctx.store.getUserBootstrap(ctx.userId);
     if (!bootstrap) {
       const unauthState: SessionState = {
-        demo_available: process.env.VERCEL !== "1",
+        demo_available: process.env.VERCEL !== "1" || ctx.mode === "supabase",
         live_ready: ctx.mode === "supabase",
         authenticated: false,
         mode: ctx.mode,
@@ -45,7 +45,8 @@ export async function GET() {
     }
 
     const state: SessionState = {
-      demo_available: process.env.VERCEL !== "1",
+      demo_available: process.env.VERCEL !== "1" || ctx.mode === "supabase",
+      is_demo: ctx.mode === "demo" || bootstrap.user.email.endsWith("@careplan-demo.invalid"),
       live_ready: ctx.mode === "supabase",
       authenticated: true,
       mode: ctx.mode,

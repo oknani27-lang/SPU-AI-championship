@@ -310,6 +310,7 @@ export interface TextToTaskResponse {
 }
 
 export interface SessionState {
+  is_demo?: boolean;
   demo_available?: boolean;
   live_ready?: boolean;
   authenticated: boolean;

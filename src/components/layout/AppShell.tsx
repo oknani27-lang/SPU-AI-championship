@@ -327,7 +327,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                 {session?.user?.full_name || "ผู้ดูแล"}
               </p>
               <p className="text-[11px] text-[#66736B] truncate">
-                {session?.mode === "demo" ? "โหมดสาธิต" : session?.user?.email}
+                {session?.mode === "demo" || session?.is_demo ? "โหมดสาธิต" : session?.user?.email}
               </p>
             </div>
             <button
@@ -348,7 +348,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0 pb-16 lg:pb-0">
         {logoutError && <p role="alert" className="px-4 py-3 text-sm text-red-700 bg-red-50">{logoutError}</p>}
         {/* Hackathon Demo Mode Banner */}
-        {session?.mode === "demo" && (
+        {(session?.mode === "demo" || session?.is_demo) && (
           <div className="no-print border-b border-[#CFE3D4] bg-[#EAF3EC] px-4 py-2">
             <div className="mx-auto max-w-6xl flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm text-[#17241D]">
               <div className="flex items-center gap-2 min-w-0">
@@ -359,7 +359,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                   ข้อมูลทดลอง
                 </span>
               </div>
-              <Button
+              {session?.mode === "demo" && <Button
                 size="sm"
                 variant="outline"
                 loading={resettingDemo}
@@ -368,7 +368,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 เริ่มใหม่
-              </Button>
+              </Button>}
             </div>
           </div>
         )}

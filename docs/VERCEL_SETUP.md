@@ -8,13 +8,13 @@ The dashboard confirms the database belongs to `oknani27-lang's Org` and its pro
 
 Sources are deployed through the authenticated Vercel API. Real `.env`, local data/evidence, node_modules and build outputs are excluded. Server-only application credentials are configured as sensitive Vercel environment variables for Preview and Production; local APP_BASE_URL and CAREPLAN_DIST_DIR are not copied.
 
-## Database setup still required
+## Database setup
 
-The configured Supabase project is `ngkwsavxyyaeygduzvqc`. Read-only REST probes for `careplan_user_profiles` and `careplan_calendar_events` returned HTTP 404 / PGRST205. The connected Supabase account only exposes another project, which was not modified.
+The configured Supabase project is `ngkwsavxyyaeygduzvqc`. The owner has run the schema and backend grants; subsequent REST probes for the main Careplan tables returned HTTP 200. The connected Supabase account only exposes another project, which was not modified.
 
 An owner of the intended project should run `supabase/careplan-vercel-setup.sql` once in its SQL Editor. This combines only the five CarePlan migrations in dependency order; do not run unrelated chat/preview migrations. After setup, verify the API tables and account login/registration. Configure Supabase Auth's Site URL and allowed redirects for the deployed URL where required.
 
-Local file Demo mode is intentionally unavailable on Vercel. Its filesystem is not a durable/shared application database. The hosted demo endpoint returns an explanatory 503 instead of attempting to write local user data. The normal local development demo is unchanged.
+Hosted Demo now creates a separate Supabase-backed sample account for each visitor without requiring an email/password form. It seeds 18 example tasks across Monday–Saturday, labels sample users/data, and uses normal secure Supabase session cookies. Existing browser demo sessions are reused; account creation has a backend hourly budget. No auth token or generated password is returned in the JSON body. Local development continues to use the original file Demo store. Hosted demo requires the deployed Careplan schema and backend grants.
 
 Notifications additionally require the VAPID settings and worker setup in `docs/PUSH_SETUP.md`. The current Vercel Hobby plan rejected the existing 15-minute cron, so the web deployment does not install a scheduled cron. Use a separately hosted worker/scheduler with a server-only CRON_SECRET, or configure supported scheduling separately. The cron endpoint fails closed until authenticated. Do not infer background push readiness from a successful frontend deployment.
 
